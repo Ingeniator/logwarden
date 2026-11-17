@@ -1,62 +1,68 @@
 # AGENTS.md: working on logwarden
 
 Instructions for AI agents (and humans) changing this repo. To *use* logwarden in another
-project, see `skills/logwarden/SKILL.md` and `docs/integration.md` instead.
+project, see `plugin/skills/logwarden/SKILL.md` and `docs/integration.md` instead.
 
 ## What this repo is
 
-A guardrail for structured logs. `bin/logwarden check` converts JSON log lines into
-OTel Weaver samples (`lib/to-weaver.jq`), runs `weaver registry live-check` with the
-registry in `registry/` and the rules in `policies/logwarden.rego`, then summarises the
-result (`lib/summary.jq`) with the fix hints from `lib/rules.json`.
+A guardrail for structured logs, published as the PyPI package `logwarden`.
+`logwarden check` converts JSON log lines into OTel Weaver samples (`check.to_sample`), runs
+`weaver registry live-check` with the registry and Rego rules in `src/logwarden/_data/`,
+then summarises the result (`check.summarise`) with the fix hints from `rules.json`.
 
 | Path | Role |
 |---|---|
-| `bin/logwarden` | CLI (bash). `check`, `rules`, `init`, `setup` |
-| `policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
-| `lib/rules.json` | Rule id → section, title, hint, doc anchor. Used by the CLI and MCP |
-| `registry/` | Weaver registry: semconv dependency + shared domain fields |
-| `docs/standard.md`, `docs/rules.md` | The standard, and one section per rule id |
-| `python/logwarden_pytest/` | pytest plugin that captures logs (`LOGWARDEN_CAPTURE`) |
-| `mcp/server.py` | MCP server wrapping the CLI |
-| `skills/`, `templates/` | Files `logwarden init --agent` copies into other projects |
-| `examples/`, `tests/smoke.sh` | Good and bad logs, and the test that uses them |
+| `src/logwarden/cli.py` | CLI: `check`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
+| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, the result dict |
+| `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256 |
+| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` |
+| `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
+| `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
+| `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
+| `src/logwarden/pytest_plugin.py` | Capture plugin (`LOGWARDEN_CAPTURE`), registered through the `pytest11` entry point |
+| `src/logwarden/mcp_server.py` | MCP server (`logwarden mcp`, `[mcp]` extra) |
+| `docs/standard.md`, `docs/rules.md` | The standard and one section per rule. Copied into the wheel |
+| `plugin/`, `.claude-plugin/marketplace.json` | Claude Code plugin (skill, MCP config, `/logwarden:check`) and its marketplace |
+| `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx` |
+| `tests/golden/` | v0.2.0 output used by the parity tests. Regenerate only on purpose |
 
 ## Commands
 
 ```bash
-make test            # smoke test (downloads weaver to .tools/ on first run)
-bin/logwarden check examples/bad.jsonl
-bin/logwarden check examples/bad.jsonl --json | jq .by_rule
+uv run pytest -q                    # all tests (real Weaver runs; downloads it on first use)
+uv run logwarden check examples/bad.jsonl
+uv build                            # wheel + sdist
+make validate-plugin                # claude plugin validate --strict for marketplace + plugin
 ```
 
-`make test` must pass before you commit.
+`uv run pytest` must pass before you commit.
 
 ## Adding or changing a rule
 
 Do all of these in one change:
-1. Add the rule to `policies/logwarden.rego`. The message starts with the standard section
-   (`"§4: ..."`) and says what to use instead.
-2. Add an entry to `lib/rules.json` (`section`, `title`, `hint`, `doc`).
+1. Add the rule to `src/logwarden/_data/policies/logwarden.rego`. The message starts with the
+   standard section (`"§4: ..."`) and says what to use instead.
+2. Add an entry to `src/logwarden/_data/rules.json` (`section`, `title`, `hint`, `doc`).
 3. Add `## <rule_id>` to `docs/rules.md` with a failing line, a passing line and the fix.
    The MCP tool `explain_rule` reads this heading, so the format matters.
 4. Mark the rule **[checked]** in `docs/standard.md`.
-5. Add a failing line to `examples/bad.jsonl`, and the rule id to the loop in
-   `tests/smoke.sh`. Keep `examples/good.jsonl` passing.
+5. Add a failing line to `examples/bad.jsonl` and the rule id to
+   `test_bad_example_covers_every_rule_with_line_numbers`. Keep `examples/good.jsonl` passing.
+   Changing the examples changes the parity goldens, so regenerate them and say why in the commit.
 6. Add a row to the rule table in `README.md`.
 
 Rego runs per sample (one log line or one attribute), so it can't check anything across
-a run, such as "never seen". Write those as jq in `lib/` and call them from `cmd_check`.
+a run, such as "never seen". Write those in Python in `check.py`.
 
 ## Constraints
 
-- The CLI needs only `bash` (3.2+, macOS default), `jq`, `curl`, `tar`. Don't add a
-  Python or Node dependency to it.
-- Rule ids are a public interface: CI configs, agent prompts and `--json` consumers use
-  them. Don't rename one. Add a new id and keep the old one if needed.
-- `--json` output fields are a public interface too. Only add fields.
-- Weaver 0.28 emits findings as `{id, level, message}`. `summary.jq` also accepts the
-  older `advice_type`/`advice_level` names.
+- The core install has no runtime dependencies (except `tomli` on Python 3.10). Optional
+  features go in extras (`[mcp]`).
+- Rule ids, the `--json` keys and exit codes are a public interface for CI configs, agent
+  prompts and the Action. Only add, never rename. Add a new id and keep the old one if needed.
+- Weaver 0.28 emits findings as `{id, level, message}`. `summarise` also accepts the older
+  `advice_type`/`advice_level` names.
+- Never print to stdout outside the result. MCP uses stdio, and `--json` must stay parseable.
 
 ## Releasing
 
@@ -71,8 +77,12 @@ Every version follows **notes first, verify last**:
 3. **Before tagging**, run every check in the table and record the result (`✅` plus
    evidence such as a CI run id or command output, or `❌` plus what failed). A `❌` blocks
    the release: fix it, or move the claim out of the notes.
-4. Bump the version in every place that has it, update the `@vX.Y.Z` references in
+4. Bump the version: `src/logwarden/__init__.py`, `plugin/.claude-plugin/plugin.json`,
+   `.claude-plugin/marketplace.json` and the `logwarden[mcp]==` pin in `plugin/.mcp.json`
+   (`tests/test_versions.py` checks they agree). Update the `@vX.Y.Z` references in
    `README.md` and `docs/integration.md`, set the notes' status to `Released <date> ·
    commit <sha>`, and update `CHANGELOG.md`.
 5. Commit, wait for CI to pass, then `git tag -a vX.Y.Z -m "..."` and
-   `git push origin vX.Y.Z`.
+   `git push origin vX.Y.Z`. The `release` workflow refuses a tag whose notes aren't
+   marked Released. It publishes to PyPI with trusted publishing and creates the GitHub
+   release from the notes. Run the workflow manually for a TestPyPI dry run.

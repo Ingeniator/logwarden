@@ -1,0 +1,125 @@
+{
+  "tool": "logwarden",
+  "version": "0.2.0",
+  "ok": false,
+  "records": 2,
+  "skipped_lines": 1,
+  "violations": 7,
+  "by_rule": [
+    {
+      "rule": "adr_banned_synonym",
+      "count": 1,
+      "title": "Banned synonym for an OTel semconv field",
+      "hint": "Rename the field to the semconv name given in the message.",
+      "doc": "docs/rules.md#adr_banned_synonym",
+      "example": "§2: 'status' is a banned synonym; use http.response.status_code"
+    },
+    {
+      "rule": "adr_environment_value",
+      "count": 1,
+      "title": "Environment value is not a documented one",
+      "hint": "Set deployment.environment.name to development, staging, test or production.",
+      "doc": "docs/rules.md#adr_environment_value",
+      "example": "§3: environment 'dev' must be one of development, staging, test, production"
+    },
+    {
+      "rule": "adr_event_name",
+      "count": 1,
+      "title": "Event is a constant snake_case name",
+      "hint": "Use a fixed name like import_completed and move variable data into fields: log.info(\"import_completed\", rows_imported=n).",
+      "doc": "docs/rules.md#adr_event_name",
+      "example": "§4: event 'Loaded 3 models' must be a constant snake_case name"
+    },
+    {
+      "rule": "adr_failure_context",
+      "count": 1,
+      "title": "Failure line does not say what failed",
+      "hint": "On warning/error and *_failed lines log exc_info=True (gives exception.type), or error.type, or http.response.status_code.",
+      "doc": "docs/rules.md#adr_failure_context",
+      "example": "§12: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+    },
+    {
+      "rule": "adr_missing_required",
+      "count": 1,
+      "title": "Required resource fields on every line",
+      "hint": "Add service.name, service.version and deployment.environment.name in one shared processor/formatter, not at call sites.",
+      "doc": "docs/rules.md#adr_missing_required",
+      "example": "§3: required field 'service.version' missing"
+    },
+    {
+      "rule": "adr_semconv_prefix",
+      "count": 1,
+      "title": "Semconv name written with underscores",
+      "hint": "Use the dotted semconv key (http_route -> http.route). In structlog pass it as **{\"http.route\": value}.",
+      "doc": "docs/rules.md#adr_semconv_prefix",
+      "example": "§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'"
+    },
+    {
+      "rule": "missing_attribute",
+      "count": 1,
+      "title": "Unknown field",
+      "hint": "Use the OTel semconv name if one exists. If it is a real domain field, declare it in logwarden-fields.yaml.",
+      "doc": "docs/rules.md#missing_attribute",
+      "example": "Attribute 'foo_bar' does not exist in the registry."
+    }
+  ],
+  "findings": [
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "adr_banned_synonym",
+      "field": "status",
+      "message": "§2: 'status' is a banned synonym; use http.response.status_code"
+    },
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "adr_semconv_prefix",
+      "field": "http_route",
+      "message": "§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'"
+    },
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "missing_attribute",
+      "field": "foo_bar",
+      "message": "Attribute 'foo_bar' does not exist in the registry."
+    },
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "adr_environment_value",
+      "field": "deployment.environment.name",
+      "message": "§3: environment 'dev' must be one of development, staging, test, production"
+    },
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "adr_missing_required",
+      "field": "service.version",
+      "message": "§3: required field 'service.version' missing"
+    },
+    {
+      "line": 1,
+      "event": "Loaded 3 models",
+      "rule": "adr_event_name",
+      "field": null,
+      "message": "§4: event 'Loaded 3 models' must be a constant snake_case name"
+    },
+    {
+      "line": 3,
+      "event": "upstream_call_failed",
+      "rule": "adr_failure_context",
+      "field": null,
+      "message": "§12: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+    }
+  ],
+  "findings_truncated": false,
+  "advice": [
+    {
+      "rule": "undefined_enum_variant",
+      "level": "information",
+      "count": 1
+    }
+  ]
+}

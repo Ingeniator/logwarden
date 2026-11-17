@@ -1,0 +1,49 @@
+logwarden: 5 records, 16 violations (4 non-JSON lines skipped)
+
+  6	missing_attribute - Unknown field
+	fix: Use the OTel semconv name if one exists. If it is a real domain field, declare it in logwarden-fields.yaml.
+	e.g. Attribute 'attempt' does not exist in the registry.
+
+  3	adr_semconv_prefix - Semconv name written with underscores
+	fix: Use the dotted semconv key (http_route -> http.route). In structlog pass it as **{"http.route": value}.
+	e.g. §2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'
+
+  2	adr_banned_synonym - Banned synonym for an OTel semconv field
+	fix: Rename the field to the semconv name given in the message.
+	e.g. §2: 'env' is a banned synonym; use deployment.environment.name
+
+  2	adr_missing_required - Required resource fields on every line
+	fix: Add service.name, service.version and deployment.environment.name in one shared processor/formatter, not at call sites.
+	e.g. §3: required field 'deployment.environment.name' missing
+
+  1	adr_event_name - Event is a constant snake_case name
+	fix: Use a fixed name like import_completed and move variable data into fields: log.info("import_completed", rows_imported=n).
+	e.g. §4: event 'no level here' must be a constant snake_case name
+
+  1	deprecated - Deprecated semconv field
+	fix: Rename to the replacement named in the message.
+	e.g. Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).
+
+  1	type_mismatch - Field has the wrong type
+	fix: Log the type the registry declares (e.g. http.response.status_code is an int, not a string).
+	e.g. Attribute 'http.response.status_code' has type 'string'. Type should be 'int'.
+
+findings (first 16):
+  line 1	missing_attribute	Attribute 'attempt' does not exist in the registry.
+  line 1	missing_attribute	Attribute 'ok' does not exist in the registry.
+  line 1	missing_attribute	Attribute 'meta' does not exist in the registry.
+  line 1	missing_attribute	Attribute 'tags' does not exist in the registry.
+  line 1	missing_attribute	Attribute 'nothing' does not exist in the registry.
+  line 4	adr_semconv_prefix	§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'
+  line 7	adr_missing_required	§3: required field 'deployment.environment.name' missing
+  line 7	adr_missing_required	§3: required field 'service.version' missing
+  line 7	adr_event_name	§4: event 'no level here' must be a constant snake_case name
+  line 8	type_mismatch	Attribute 'http.response.status_code' has type 'string'. Type should be 'int'.
+  line 8	deprecated	Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).
+  line 8	adr_banned_synonym	§2: 'env' is a banned synonym; use deployment.environment.name
+  line 8	adr_banned_synonym	§2: 'path' is a banned synonym; use url.path or http.route
+  line 9	adr_semconv_prefix	§2: 'user_id' uses '_' where semconv uses '.'; probably 'user.id'
+  line 9	adr_semconv_prefix	§2: 'db_rows' uses '_' where semconv uses '.'; probably 'db.rows'
+  line 9	missing_attribute	Attribute 'big' does not exist in the registry.
+
+not failing: undefined_enum_variant=1

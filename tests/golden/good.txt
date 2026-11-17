@@ -1,0 +1,4 @@
+logwarden: 2 records, 0 violations
+OK
+
+not failing: undefined_enum_variant=1

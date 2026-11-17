@@ -10,7 +10,7 @@ It checks output, not source code, so it works for any language. Field names fol
 the names traces and metrics already use, so logs, traces and metrics can be queried together.
 
 ```
-$ logwarden check logs.jsonl
+$ uvx logwarden check logs.jsonl
 logwarden: 573 records, 2843 violations
 
   539	adr_event_name - Event is a constant snake_case name
@@ -34,49 +34,52 @@ findings (first 20):
 | `adr_event_name` | `event="Loaded 3 models"` instead of `models_loaded` |
 | `adr_failure_context` | an error line without `exception.type`, `error.type` or a status code |
 
-The standard is in [docs/standard.md](docs/standard.md), and each rule's fix is in
-[docs/rules.md](docs/rules.md).
+The standard is in [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md), and each rule's fix is in
+[docs/rules.md](https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md).
 
 ## Use it in a project
 
 ```bash
-logwarden init --agent                       # fields file + agent instructions
-LOGWARDEN_CAPTURE=logs.jsonl pytest          # capture logs (pytest plugin)
-logwarden check logs.jsonl                   # check them
+uv add --dev logwarden                      # or: pipx install logwarden / uvx logwarden
+logwarden init --agent                      # fields file + AGENTS.md section
+LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-registered)
+logwarden check logs.jsonl                  # check them
 ```
 
 ```yaml
 # CI
-- uses: Ingeniator/logwarden@v0.2.0
+- uses: Ingeniator/logwarden@v0.3.0
   with:
     logs: logs.jsonl
 ```
 
-See [docs/integration.md](docs/integration.md) for installation, capturing logs from any
-stack, project-only fields and migrating a legacy service.
+Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
+See [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md) for capturing logs from any stack,
+project-only fields and migrating a legacy service.
 
 ## For AI agents
 
-- **Agents using logwarden in another project:** read
-  [skills/logwarden/SKILL.md](skills/logwarden/SKILL.md). `logwarden init --agent`
-  installs it, along with an `AGENTS.md` section.
-- **MCP:** `uv run --script mcp/server.py` provides `check_logs`, `explain_rule`,
-  `list_rules` and `get_standard`.
-- **Machine output:** `logwarden check --json` gives each finding's line number, rule
-  and fix hint.
-- **Agents working on this repo:** read [AGENTS.md](AGENTS.md).
+- **Claude Code:** `/plugin marketplace add Ingeniator/logwarden`, then
+  `/plugin install logwarden@logwarden`. This gives a skill for writing good logs, the MCP
+  server and `/logwarden:check`.
+- **Other agents:** `logwarden init --agent` adds a logwarden section to `AGENTS.md`. The MCP
+  server runs with `uvx --from 'logwarden[mcp]' logwarden mcp` and provides `check_logs`,
+  `explain_rule`, `list_rules` and `get_standard`.
+- **Machine output:** `logwarden check --json` gives each finding's line number, rule and
+  fix hint.
+- **Agents working on this repo:** read [AGENTS.md](https://github.com/Ingeniator/logwarden/blob/main/AGENTS.md).
 
 ## How it works
 
 Each log line becomes a sample for [OTel Weaver](https://github.com/open-telemetry/weaver)
 `registry live-check`. Weaver checks the sample's field names against the semconv
-registry (plus `registry/` and the project's `logwarden-fields.yaml`) and runs the rules
-in `policies/logwarden.rego`. Requirements are `bash`, `jq` and `curl`. Weaver is
-downloaded on first use.
+registry (plus logwarden's shared fields and the project's `logwarden-fields.yaml`) and
+runs the rules in `src/logwarden/_data/policies/logwarden.rego`. Python 3.10+ on Linux,
+macOS or Windows. Weaver is downloaded on first use and checked against its published
+SHA-256.
 
 ## Not covered yet
 
-- Checks across the whole run, such as "every upstream has a logged failure test".
-- Failing on non-JSON lines (they're counted as skipped for now).
-- `logwarden report`, an HTML report.
-- Source-code rules (Ruff, Semgrep) are separate. See the standard's enforcement notes.
+See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md). Next up: baseline mode for legacy services, a
+sensitive-data rule, non-JSON lines, and a logging-setup library. Release notes are in
+[CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md).

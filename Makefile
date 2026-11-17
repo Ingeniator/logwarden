@@ -4,15 +4,20 @@
 help:  ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: install-weaver
-install-weaver:  ## Download the pinned weaver binary into .tools/ (if not on PATH)
-	@bin/logwarden setup
-
 .PHONY: test
-test: install-weaver  ## Run the smoke test against examples/
-	./tests/smoke.sh
+test:  ## Run the test suite (downloads weaver on first run)
+	uv run pytest -q
 
 .PHONY: check
 check:  ## Check a log file: make check LOGS=path/to/logs.jsonl
 	@[ -n "$(LOGS)" ] || { echo "usage: make check LOGS=path/to/logs.jsonl"; exit 2; }
-	bin/logwarden check "$(LOGS)"
+	uv run logwarden check "$(LOGS)"
+
+.PHONY: build
+build:  ## Build sdist and wheel into dist/
+	uv build
+
+.PHONY: validate-plugin
+validate-plugin:  ## Validate the Claude Code marketplace and plugin manifests
+	claude plugin validate --strict .
+	claude plugin validate --strict plugin

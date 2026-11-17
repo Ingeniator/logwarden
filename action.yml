@@ -1,11 +1,14 @@
 name: logwarden
 description: Guardrail for structured logs. Checks JSON-lines logs against the logwarden logging standard.
+branding:
+  icon: check-circle
+  color: green
 inputs:
   logs:
     description: Path to a JSON-lines log file captured from tests or a smoke run.
     required: true
   fields:
-    description: Project-only fields file (default ./logwarden-fields.yaml if present).
+    description: Project-only fields file (default from [tool.logwarden], logwarden.toml or ./logwarden-fields.yaml).
     required: false
     default: ""
   fail:
@@ -15,6 +18,7 @@ inputs:
 runs:
   using: composite
   steps:
+    - uses: astral-sh/setup-uv@v6
     - name: Check logs
       shell: bash
       env:
@@ -22,11 +26,12 @@ runs:
         LW_FIELDS: ${{ inputs.fields }}
         LW_FAIL: ${{ inputs.fail }}
       run: |
+        # logwarden is built from this action's own checkout, so action and CLI are one version.
         args=(check "$LW_LOGS" -o logwarden.report --max 50)
         [ -n "$LW_FIELDS" ] && args+=(--fields "$LW_FIELDS")
         mkdir -p logwarden.report
         set +e
-        "${{ github.action_path }}/bin/logwarden" "${args[@]}" | tee logwarden.report/summary.txt
+        uvx --quiet --from "$GITHUB_ACTION_PATH" logwarden "${args[@]}" | tee logwarden.report/summary.txt
         rc=${PIPESTATUS[0]}
         set -e
         { echo "### logwarden"; echo '```'; cat logwarden.report/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

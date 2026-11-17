@@ -1,0 +1,12 @@
+{
+  "name": "logwarden",
+  "version": "0.3.0",
+  "description": "Guardrail for structured logs: a skill for writing good logs, the logwarden MCP server, and /logwarden:check.",
+  "author": {
+    "name": "Ingeniator",
+    "url": "https://github.com/Ingeniator"
+  },
+  "homepage": "https://github.com/Ingeniator/logwarden",
+  "repository": "https://github.com/Ingeniator/logwarden",
+  "keywords": ["logging", "observability", "opentelemetry", "lint"]
+}

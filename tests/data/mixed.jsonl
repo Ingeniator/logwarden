@@ -1,0 +1,9 @@
+{"timestamp":"t","level":"warning","event":"retry_scheduled","logger":"w","service.name":"s","service.version":"1","deployment.environment.name":"test","attempt":2,"duration_ms":12.5,"ok":false,"meta":{"a":[1,2],"b":"ü"},"tags":["x","y"],"nothing":null,"error.type":"timeout"}
+
+   
+{"level":"ERROR","event":"db_write_failed","logger":"db","service.name":"s","service.version":"1","deployment.environment.name":"staging","db.system.name":"postgresql","exception.type":"IntegrityError","http_method":"GET","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
+not json at all
+[1,2,3]
+{"event":"no level here","service.name":"s"}
+{"level":"critical","event":"shutdown_started","logger":"main","service.name":"s","service.version":"1","deployment.environment.name":"production","http.response.status_code":"500","gen_ai.system":"openai","env":"prod","path":"/x"}
+{"level":"debug","event":"cache_hit","logger":"c","service.name":"s","service.version":"1","deployment.environment.name":"development","user_id":"u1","db_rows":3,"big":12345678901234567890}

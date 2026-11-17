@@ -1,0 +1,82 @@
+name: release
+# Tag vX.Y.Z  -> build, publish to PyPI, create the GitHub release from docs/releases/vX.Y.Z.md.
+# Manual run  -> dry run: publish X.Y.Z.devN to TestPyPI.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Resolve version
+        id: version
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/logwarden/__init__.py)
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "${GITHUB_REF_NAME}" = "v$v" ] || { echo "tag ${GITHUB_REF_NAME} != v$v"; exit 1; }
+            grep -q '^\*\*Status:\*\* Released' "docs/releases/v$v.md" \
+              || { echo "docs/releases/v$v.md is not marked Released (verify the notes first)"; exit 1; }
+          else
+            v="$v.dev${GITHUB_RUN_NUMBER}"
+            sed -i "s/^__version__ = .*/__version__ = \"$v\"/" src/logwarden/__init__.py
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    if: github.ref_type == 'tag'
+    needs: [build, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.build.outputs.version }}
+        run: gh release create "v$V" dist/* --title "logwarden v$V" --notes-file "docs/releases/v$V.md"

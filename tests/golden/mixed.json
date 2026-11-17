@@ -1,0 +1,188 @@
+{
+  "tool": "logwarden",
+  "version": "0.2.0",
+  "ok": false,
+  "records": 5,
+  "skipped_lines": 4,
+  "violations": 16,
+  "by_rule": [
+    {
+      "rule": "missing_attribute",
+      "count": 6,
+      "title": "Unknown field",
+      "hint": "Use the OTel semconv name if one exists. If it is a real domain field, declare it in logwarden-fields.yaml.",
+      "doc": "docs/rules.md#missing_attribute",
+      "example": "Attribute 'attempt' does not exist in the registry."
+    },
+    {
+      "rule": "adr_semconv_prefix",
+      "count": 3,
+      "title": "Semconv name written with underscores",
+      "hint": "Use the dotted semconv key (http_route -> http.route). In structlog pass it as **{\"http.route\": value}.",
+      "doc": "docs/rules.md#adr_semconv_prefix",
+      "example": "§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'"
+    },
+    {
+      "rule": "adr_banned_synonym",
+      "count": 2,
+      "title": "Banned synonym for an OTel semconv field",
+      "hint": "Rename the field to the semconv name given in the message.",
+      "doc": "docs/rules.md#adr_banned_synonym",
+      "example": "§2: 'env' is a banned synonym; use deployment.environment.name"
+    },
+    {
+      "rule": "adr_missing_required",
+      "count": 2,
+      "title": "Required resource fields on every line",
+      "hint": "Add service.name, service.version and deployment.environment.name in one shared processor/formatter, not at call sites.",
+      "doc": "docs/rules.md#adr_missing_required",
+      "example": "§3: required field 'deployment.environment.name' missing"
+    },
+    {
+      "rule": "adr_event_name",
+      "count": 1,
+      "title": "Event is a constant snake_case name",
+      "hint": "Use a fixed name like import_completed and move variable data into fields: log.info(\"import_completed\", rows_imported=n).",
+      "doc": "docs/rules.md#adr_event_name",
+      "example": "§4: event 'no level here' must be a constant snake_case name"
+    },
+    {
+      "rule": "deprecated",
+      "count": 1,
+      "title": "Deprecated semconv field",
+      "hint": "Rename to the replacement named in the message.",
+      "doc": "docs/rules.md#deprecated",
+      "example": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'."
+    },
+    {
+      "rule": "type_mismatch",
+      "count": 1,
+      "title": "Field has the wrong type",
+      "hint": "Log the type the registry declares (e.g. http.response.status_code is an int, not a string).",
+      "doc": "docs/rules.md#type_mismatch",
+      "example": "Attribute 'http.response.status_code' has type 'string'. Type should be 'int'."
+    }
+  ],
+  "findings": [
+    {
+      "line": 1,
+      "event": "retry_scheduled",
+      "rule": "missing_attribute",
+      "field": "attempt",
+      "message": "Attribute 'attempt' does not exist in the registry."
+    },
+    {
+      "line": 1,
+      "event": "retry_scheduled",
+      "rule": "missing_attribute",
+      "field": "ok",
+      "message": "Attribute 'ok' does not exist in the registry."
+    },
+    {
+      "line": 1,
+      "event": "retry_scheduled",
+      "rule": "missing_attribute",
+      "field": "meta",
+      "message": "Attribute 'meta' does not exist in the registry."
+    },
+    {
+      "line": 1,
+      "event": "retry_scheduled",
+      "rule": "missing_attribute",
+      "field": "tags",
+      "message": "Attribute 'tags' does not exist in the registry."
+    },
+    {
+      "line": 1,
+      "event": "retry_scheduled",
+      "rule": "missing_attribute",
+      "field": "nothing",
+      "message": "Attribute 'nothing' does not exist in the registry."
+    },
+    {
+      "line": 4,
+      "event": "db_write_failed",
+      "rule": "adr_semconv_prefix",
+      "field": "http_method",
+      "message": "§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'"
+    },
+    {
+      "line": 7,
+      "event": "no level here",
+      "rule": "adr_missing_required",
+      "field": "deployment.environment.name",
+      "message": "§3: required field 'deployment.environment.name' missing"
+    },
+    {
+      "line": 7,
+      "event": "no level here",
+      "rule": "adr_missing_required",
+      "field": "service.version",
+      "message": "§3: required field 'service.version' missing"
+    },
+    {
+      "line": 7,
+      "event": "no level here",
+      "rule": "adr_event_name",
+      "field": null,
+      "message": "§4: event 'no level here' must be a constant snake_case name"
+    },
+    {
+      "line": 8,
+      "event": "shutdown_started",
+      "rule": "type_mismatch",
+      "field": "http.response.status_code",
+      "message": "Attribute 'http.response.status_code' has type 'string'. Type should be 'int'."
+    },
+    {
+      "line": 8,
+      "event": "shutdown_started",
+      "rule": "deprecated",
+      "field": "gen_ai.system",
+      "message": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'."
+    },
+    {
+      "line": 8,
+      "event": "shutdown_started",
+      "rule": "adr_banned_synonym",
+      "field": "env",
+      "message": "§2: 'env' is a banned synonym; use deployment.environment.name"
+    },
+    {
+      "line": 8,
+      "event": "shutdown_started",
+      "rule": "adr_banned_synonym",
+      "field": "path",
+      "message": "§2: 'path' is a banned synonym; use url.path or http.route"
+    },
+    {
+      "line": 9,
+      "event": "cache_hit",
+      "rule": "adr_semconv_prefix",
+      "field": "user_id",
+      "message": "§2: 'user_id' uses '_' where semconv uses '.'; probably 'user.id'"
+    },
+    {
+      "line": 9,
+      "event": "cache_hit",
+      "rule": "adr_semconv_prefix",
+      "field": "db_rows",
+      "message": "§2: 'db_rows' uses '_' where semconv uses '.'; probably 'db.rows'"
+    },
+    {
+      "line": 9,
+      "event": "cache_hit",
+      "rule": "missing_attribute",
+      "field": "big",
+      "message": "Attribute 'big' does not exist in the registry."
+    }
+  ],
+  "findings_truncated": false,
+  "advice": [
+    {
+      "rule": "undefined_enum_variant",
+      "level": "information",
+      "count": 1
+    }
+  ]
+}

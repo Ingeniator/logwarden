@@ -27,18 +27,18 @@ Your job is to make sure the code you write produces logs that pass.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
   logging setup, never from call sites.
 
-Full standard: `logwarden` repo `docs/standard.md`, or the MCP tool `get_standard`.
+Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
 
 ## After changing code: check the logs it produces
 
 1. **Capture logs** from code paths you touched, including the failure paths:
-   - Python + pytest, with `logwarden-pytest` installed:
-     `LOGWARDEN_CAPTURE=/tmp/logs.jsonl pytest <tests you touched or added>`
+   - Python + pytest: `LOGWARDEN_CAPTURE=/tmp/logs.jsonl pytest <tests you touched or added>`
+     (works when `logwarden` is a dev dependency; otherwise
+     `uv run --with logwarden pytest ...`, which adds it to the project environment for one run).
    - Anything else: run the service or a smoke test and save stdout to `/tmp/logs.jsonl`.
 2. **Check** with either:
-   - CLI: `logwarden check /tmp/logs.jsonl --json`, if `logwarden` is on PATH or at
-     `$LOGWARDEN_HOME/bin/logwarden`
-   - MCP: the `check_logs` tool (`path` or `lines`)
+   - MCP: the `check_logs` tool (`path` or `lines`), provided by the logwarden plugin
+   - CLI: `logwarden check /tmp/logs.jsonl --json`, or `uvx logwarden check ...` with no install
 3. **Fix** each finding. `by_rule[].hint` says how; `logwarden rules <id>` or the MCP
    tool `explain_rule` gives an example. `findings[].line` is the line number in the log
    file, and `findings[].event` tells you which log call produced it.
