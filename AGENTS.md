@@ -60,6 +60,19 @@ a run, such as "never seen". Write those as jq in `lib/` and call them from `cmd
 
 ## Releasing
 
-1. Bump the version in `bin/logwarden` (`VERSION`) and `pyproject.toml`.
-2. Update the `@vX.Y.Z` references in `README.md` and `docs/integration.md`.
-3. Commit, then `git tag -a vX.Y.Z -m "..." && git push origin main vX.Y.Z`.
+Every version follows **notes first, verify last**:
+
+1. **Before implementing**, write `docs/releases/vX.Y.Z.md` with status `Planned`.
+   It covers what's new, breaking changes, upgrade steps, and a verification table that
+   gives a concrete check for every claim (result `⏳`). Add a row to `CHANGELOG.md`.
+   Plans come from `docs/roadmap.md`.
+2. Implement. If the scope changes, update the notes first, so they always describe what
+   will ship.
+3. **Before tagging**, run every check in the table and record the result (`✅` plus
+   evidence such as a CI run id or command output, or `❌` plus what failed). A `❌` blocks
+   the release: fix it, or move the claim out of the notes.
+4. Bump the version in every place that has it, update the `@vX.Y.Z` references in
+   `README.md` and `docs/integration.md`, set the notes' status to `Released <date> ·
+   commit <sha>`, and update `CHANGELOG.md`.
+5. Commit, wait for CI to pass, then `git tag -a vX.Y.Z -m "..."` and
+   `git push origin vX.Y.Z`.
