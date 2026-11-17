@@ -1,0 +1,56 @@
+{
+  "adr_missing_required": {
+    "section": "§3",
+    "title": "Required resource fields on every line",
+    "hint": "Add service.name, service.version and deployment.environment.name in one shared processor/formatter, not at call sites.",
+    "doc": "docs/rules.md#adr_missing_required"
+  },
+  "adr_event_name": {
+    "section": "§4",
+    "title": "Event is a constant snake_case name",
+    "hint": "Use a fixed name like import_completed and move variable data into fields: log.info(\"import_completed\", rows_imported=n).",
+    "doc": "docs/rules.md#adr_event_name"
+  },
+  "adr_banned_synonym": {
+    "section": "§2",
+    "title": "Banned synonym for an OTel semconv field",
+    "hint": "Rename the field to the semconv name given in the message.",
+    "doc": "docs/rules.md#adr_banned_synonym"
+  },
+  "adr_semconv_prefix": {
+    "section": "§2",
+    "title": "Semconv name written with underscores",
+    "hint": "Use the dotted semconv key (http_route -> http.route). In structlog pass it as **{\"http.route\": value}.",
+    "doc": "docs/rules.md#adr_semconv_prefix"
+  },
+  "adr_environment_value": {
+    "section": "§3",
+    "title": "Environment value is not a documented one",
+    "hint": "Set deployment.environment.name to development, staging, test or production.",
+    "doc": "docs/rules.md#adr_environment_value"
+  },
+  "adr_failure_context": {
+    "section": "§12",
+    "title": "Failure line does not say what failed",
+    "hint": "On warning/error and *_failed lines log exc_info=True (gives exception.type), or error.type, or http.response.status_code.",
+    "doc": "docs/rules.md#adr_failure_context"
+  },
+  "missing_attribute": {
+    "section": "§2",
+    "title": "Unknown field",
+    "hint": "Use the OTel semconv name if one exists. If it is a real domain field, declare it in logwarden-fields.yaml.",
+    "doc": "docs/rules.md#missing_attribute"
+  },
+  "deprecated": {
+    "section": "§2",
+    "title": "Deprecated semconv field",
+    "hint": "Rename to the replacement named in the message.",
+    "doc": "docs/rules.md#deprecated"
+  },
+  "type_mismatch": {
+    "section": "§2",
+    "title": "Field has the wrong type",
+    "hint": "Log the type the registry declares (e.g. http.response.status_code is an int, not a string).",
+    "doc": "docs/rules.md#type_mismatch"
+  }
+}

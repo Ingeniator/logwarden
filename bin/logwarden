@@ -1,97 +1,225 @@
 #!/usr/bin/env bash
-# logwarden: check service logs against ADR-0001 (structured logging standard).
+# logwarden: guardrail for structured logs. See README.md and docs/standard.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WEAVER="${WEAVER:-weaver}"
-VERSION="0.1.0"
+VERSION="0.2.0"
+WEAVER_VERSION="${WEAVER_VERSION:-v0.28.0}"
+FIELDS_DEFAULT="logwarden-fields.yaml"
 
 usage() {
   cat <<EOF
-logwarden $VERSION
+logwarden $VERSION - guardrail for structured logs
 
 Usage:
-  logwarden check  <logs.jsonl> [-o DIR] [--registry DIR] [--json]
-  logwarden report <logs.jsonl> [-o FILE]     (not implemented yet)
+  logwarden check <logs.jsonl | -> [options]   check JSON-lines logs (- = stdin)
+  logwarden rules [RULE_ID]                    list rules, or explain one
+  logwarden init [DIR] [--agent]               add logwarden files to a project
+  logwarden setup                              download weaver if missing
   logwarden version
 
-check   Convert structlog JSON lines to Weaver samples, run 'weaver registry
-        live-check' with the logwarden registry and policies, print a summary.
-        Exits 1 when any violation is found.
+check options:
+  --json            machine-readable result (for CI tools and AI agents)
+  --fields FILE     project-only fields (default: ./$FIELDS_DEFAULT if present)
+  --registry DIR    full Weaver registry overlay (advanced; replaces --fields)
+  -o DIR            keep samples.json, live_check.json and result.json in DIR
+  --max N           findings shown in text output (default 20)
 
-Options:
-  -o DIR          keep Weaver output in DIR (default: temp dir, removed)
-  --registry DIR  extra registry overlay with service-specific fields
-                  (its manifest must depend on logwarden's registry)
-  --json          print the summary as JSON instead of text
-
-Env:
-  WEAVER          path to the weaver binary (default: weaver on PATH)
+Exit codes: 0 no violations, 1 violations found, 2 usage or setup error.
+Env: WEAVER (weaver binary), LOGWARDEN_FIELDS (fields file)
+Docs: $ROOT/docs/standard.md  $ROOT/docs/rules.md
 EOF
 }
 
 die() { echo "logwarden: $*" >&2; exit 2; }
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not installed"; }
 
-need() { command -v "$1" >/dev/null 2>&1 || die "'$1' not found (see README: Requirements)"; }
+weaver_target() {
+  local os arch
+  os="$(uname -s)"; arch="$(uname -m)"
+  case "$arch" in arm64|aarch64) arch=aarch64 ;; x86_64|amd64) arch=x86_64 ;; *) die "unsupported CPU: $arch" ;; esac
+  case "$os" in
+    Darwin) echo "$arch-apple-darwin" ;;
+    Linux) echo "$arch-unknown-linux-gnu" ;;
+    *) die "unsupported OS: $os (set WEAVER to a weaver binary)" ;;
+  esac
+}
+
+# Prints the weaver path: $WEAVER, then weaver on PATH, then ROOT/.tools (downloaded).
+ensure_weaver() {
+  if [[ -n "${WEAVER:-}" ]]; then
+    [[ -x "$WEAVER" ]] || command -v "$WEAVER" >/dev/null 2>&1 || die "WEAVER=$WEAVER is not executable"
+    echo "$WEAVER"; return
+  fi
+  if command -v weaver >/dev/null 2>&1; then command -v weaver; return; fi
+  local target bin
+  target="$(weaver_target)"
+  bin="$ROOT/.tools/weaver-$target/weaver"
+  if [[ ! -x "$bin" ]]; then
+    need curl; need tar
+    echo "logwarden: downloading weaver $WEAVER_VERSION ($target)..." >&2
+    mkdir -p "$ROOT/.tools"
+    curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/$WEAVER_VERSION/weaver-$target.tar.xz" \
+      | tar -xJ -C "$ROOT/.tools" || die "weaver download failed"
+  fi
+  echo "$bin"
+}
+
+# Build a registry that adds a plain fields file on top of logwarden's registry.
+fields_registry() {
+  local fields="$1" dir="$2"
+  mkdir -p "$dir"
+  cp "$fields" "$dir/fields.yaml"
+  cat > "$dir/manifest.yaml" <<EOF
+name: project
+description: Project-only log fields from $(basename "$fields")
+schema_url: https://logwarden.invalid/project/0.0.0
+dependencies:
+  - schema_url: https://github.com/Ingeniator/logwarden/schemas/0.1.0
+    registry_path: $ROOT/registry
+EOF
+}
 
 cmd_check() {
-  local input="" out="" registry="$ROOT/registry" as_json=0
+  local input="" out="" registry="" fields="${LOGWARDEN_FIELDS:-}" as_json=0 max=20
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -o) out="$2"; shift 2 ;;
-      --registry) registry="$2"; shift 2 ;;
+      -o) out="${2:?-o needs a directory}"; shift 2 ;;
+      --registry) registry="${2:?--registry needs a directory}"; shift 2 ;;
+      --fields) fields="${2:?--fields needs a file}"; shift 2 ;;
       --json) as_json=1; shift ;;
+      --max) max="${2:?--max needs a number}"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
+      -) input="-"; shift ;;
       -*) die "unknown option $1" ;;
       *) input="$1"; shift ;;
     esac
   done
-  [[ -n "$input" ]] || die "check: missing <logs.jsonl>"
-  [[ -f "$input" ]] || die "check: no such file: $input"
-  need jq; need "$WEAVER"
+  [[ -n "$input" ]] || die "check: give a log file, or - to read stdin"
+  [[ "$input" == "-" || -f "$input" ]] || die "check: no such file: $input"
+  [[ -n "$registry" && -n "$fields" ]] && die "check: use --fields or --registry, not both"
+  if [[ -z "$registry" && -z "$fields" && -f "$FIELDS_DEFAULT" ]]; then fields="$FIELDS_DEFAULT"; fi
+  [[ -z "$fields" || -f "$fields" ]] || die "check: no such fields file: $fields"
+  need jq
+  local weaver; weaver="$(ensure_weaver)"
 
-  local keep=1
-  if [[ -z "$out" ]]; then out="$(mktemp -d)"; keep=0; fi
-  mkdir -p "$out"
+  tmp="$(mktemp -d)"   # global so the EXIT trap can see it
+  trap 'rm -rf -- "${tmp:?}"' EXIT
+  local work="${out:-$tmp}"
+  mkdir -p "$work"
 
-  # Non-JSON lines (uvicorn banners, tracebacks printed raw) are skipped here;
-  # a separate §1 check should fail on them.
-  jq -R 'fromjson? // empty' "$input" | jq -s -f "$ROOT/lib/to-weaver.jq" > "$out/samples.json"
+  if [[ -n "$fields" ]]; then
+    fields_registry "$fields" "$tmp/registry"; registry="$tmp/registry"
+  fi
+  registry="${registry:-$ROOT/registry}"
 
-  "$WEAVER" registry live-check \
+  # Keep JSON objects with their input line numbers; everything else is skipped (counted).
+  local src=(); [[ "$input" != "-" ]] && src=("$input")
+  jq -R -n '[inputs | {n: input_line_number, v: (try fromjson catch null)}]
+            | {total: length, records: map(select(.v | type == "object"))}' ${src[@]+"${src[@]}"} > "$tmp/records.json"
+  jq '[.records[].n]' "$tmp/records.json" > "$tmp/lines.json"
+  jq '[.records[].v]' "$tmp/records.json" | jq -f "$ROOT/lib/to-weaver.jq" > "$work/samples.json"
+
+  "$weaver" registry live-check \
       --registry "$registry" \
       --include-unreferenced \
       --config "$ROOT/config/weaver.toml" \
       --advice-policies "$ROOT/policies" \
-      --input-source "$out/samples.json" \
+      --input-source "$work/samples.json" \
       --input-format json \
       --format json \
-      --output "$out" \
-      --quiet >"$out/weaver.log" 2>&1 || true
+      --output "$work" \
+      --quiet >"$work/weaver.log" 2>&1 || true
 
-  [[ -s "$out/live_check.json" ]] || { cat "$out/weaver.log" >&2; die "weaver produced no report"; }
-
-  jq -f "$ROOT/lib/summary.jq" "$out/live_check.json" > "$out/summary.json"
-
-  if [[ $as_json -eq 1 ]]; then
-    cat "$out/summary.json"
-  else
-    jq -r '
-      "logwarden: \(.samples) log records, \(.violations) violations",
-      (.by_rule[] | "  \(.count)\t\(.rule)\n\t  e.g. \(.example)"),
-      (if (.other_advice|length) > 0 then "advice (not failing):" else empty end),
-      (.other_advice[] | "  \(.count)\t\(.rule) [\(.level)]")
-    ' "$out/summary.json"
+  if [[ ! -s "$work/live_check.json" ]]; then
+    grep -E '×|rror' "$work/weaver.log" >&2 || cat "$work/weaver.log" >&2
+    die "weaver produced no report (registry or fields file invalid?)"
   fi
 
-  local violations; violations="$(jq '.violations' "$out/summary.json")"
-  [[ $keep -eq 1 ]] && echo "report: $out/live_check.json" >&2 || rm -rf "$out"
-  [[ "$violations" -eq 0 ]]
+  jq --slurpfile lines "$tmp/lines.json" --slurpfile rules "$ROOT/lib/rules.json" \
+     --argjson meta "{\"total_lines\": $(jq .total "$tmp/records.json"), \"version\": \"$VERSION\"}" \
+     -f "$ROOT/lib/summary.jq" "$work/live_check.json" > "$work/result.json"
+
+  if [[ $as_json -eq 1 ]]; then
+    cat "$work/result.json"
+  else
+    jq -r --argjson max "$max" '
+      "logwarden: \(.records) records, \(.violations) violations"
+        + (if .skipped_lines > 0 then " (\(.skipped_lines) non-JSON lines skipped)" else "" end),
+      (if .violations == 0 then "OK" else empty end),
+      (.by_rule[] | "\n  \(.count)\t\(.rule)" + (if .title then " - \(.title)" else "" end)
+                    + (if .hint then "\n\tfix: \(.hint)" else "" end)
+                    + "\n\te.g. \(.example | split("\n")[0])"),
+      (if .violations > 0 then "\nfindings (first \([$max, .violations] | min)):" else empty end),
+      (.findings[0:$max][] | "  line \(.line)\t\(.rule)\t\(.message | split("\n")[0])"),
+      (if .violations > $max then "  ... use --json or -o DIR for all" else empty end),
+      (if (.advice | length) > 0
+         then "\nnot failing: " + ([.advice[] | "\(.rule)=\(.count)"] | join(", "))
+         else empty end)
+    ' "$work/result.json"
+  fi
+  [[ -n "$out" ]] && echo "logwarden: full output in $out" >&2
+
+  [[ "$(jq -r .ok "$work/result.json")" == "true" ]] || return 1
+}
+
+cmd_rules() {
+  need jq
+  if [[ -n "${1:-}" ]]; then
+    jq -e -r --arg id "$1" '.[$id] // empty | "\($id) (\(.section)) - \(.title)\nfix: \(.hint)\ndocs: \(.doc)"' \
+      "$ROOT/lib/rules.json" || die "unknown rule '$1' (run: logwarden rules)"
+  else
+    jq -r 'to_entries[] | "\(.key)\t\(.value.section)\t\(.value.title)"' "$ROOT/lib/rules.json"
+  fi
+}
+
+# Replace or append the text between markers in a file.
+upsert_block() {
+  local file="$1" src="$2" begin="<!-- logwarden:begin -->" end="<!-- logwarden:end -->"
+  local block; block="$(printf '%s\n' "$begin"; cat "$src"; printf '%s\n' "$end")"
+  if [[ -f "$file" ]] && grep -qF "$begin" "$file"; then
+    BLOCK="$block" awk -v b="$begin" -v e="$end" '
+      $0==b {print ENVIRON["BLOCK"]; skip=1; next}
+      $0==e {skip=0; next}
+      !skip {print}' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    echo "updated logwarden section in $file"
+  else
+    { [[ -s "$file" ]] && printf '\n'; printf '%s\n' "$block"; } >> "$file"
+    echo "added logwarden section to $file"
+  fi
+}
+
+cmd_init() {
+  local dir="." agent=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --agent) agent=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown option $1" ;;
+      *) dir="$1"; shift ;;
+    esac
+  done
+  [[ -d "$dir" ]] || die "init: no such directory: $dir"
+  if [[ -f "$dir/$FIELDS_DEFAULT" ]]; then
+    echo "kept existing $dir/$FIELDS_DEFAULT"
+  else
+    cp "$ROOT/templates/$FIELDS_DEFAULT" "$dir/$FIELDS_DEFAULT"; echo "created $dir/$FIELDS_DEFAULT"
+  fi
+  if [[ $agent -eq 1 ]]; then
+    mkdir -p "$dir/.claude/skills/logwarden"
+    cp "$ROOT/skills/logwarden/SKILL.md" "$dir/.claude/skills/logwarden/SKILL.md"
+    echo "installed skill to $dir/.claude/skills/logwarden/SKILL.md"
+    upsert_block "$dir/AGENTS.md" "$ROOT/templates/AGENTS.snippet.md"
+  fi
+  echo "next: capture JSON logs and run 'logwarden check <file>' (see $ROOT/docs/integration.md)"
 }
 
 case "${1:-}" in
   check) shift; cmd_check "$@" ;;
-  report) die "report: not implemented yet (planned: HTML report like the ADR explainer)" ;;
+  rules) shift; cmd_rules "$@" ;;
+  init) shift; cmd_init "$@" ;;
+  setup) ensure_weaver ;;
+  report) die "report: not implemented yet (planned: HTML report)" ;;
   version|--version) echo "$VERSION" ;;
   ""|-h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;

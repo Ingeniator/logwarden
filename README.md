@@ -1,69 +1,82 @@
 # logwarden
 
-A linter for **log output**. You give it the JSON logs your service actually
-wrote, and it reports every line that breaks the
-[logging standard (ADR-0001)](https://github.com/Ingeniator/ai-suite/blob/main/docs/adr/0001-structured-logging-standard.md).
-It exits with code 1 when it finds a problem, so CI can fail on it.
+A guardrail for logs. logwarden reads the JSON logs your service actually writes and flags
+every line that would make debugging harder: ad-hoc field names, missing service info,
+free-text events, and errors that don't say what failed. It exits with code 1 on
+problems, so CI and AI agents can use it the way they use tests.
 
-It checks what the service emitted at runtime, not the source code, so it works
-for any language or logging library.
+It checks output, not source code, so it works for any language. Field names follow
+[OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/),
+the names traces and metrics already use, so logs, traces and metrics can be queried together.
 
 ```
 $ logwarden check logs.jsonl
-logwarden: 570 log records, 3063 violations
-  1710  adr_missing_required
-          e.g. ADR-0001 §3: required field 'service.version' missing
-  536   adr_event_name
-          e.g. ADR-0001 §4: event 'Loaded 3 models' must be constant snake_case
+logwarden: 573 records, 2843 violations
+
+  539	adr_event_name - Event is a constant snake_case name
+	fix: Use a fixed name like import_completed and move variable data into fields
+	e.g. §4: event 'Loaded 3 models' must be a constant snake_case name
+
+findings (first 20):
+  line 1	adr_event_name	§4: event 'Loaded 3 models' must be a constant snake_case name
 ```
 
 ## What it checks
 
-| Rule | Example of a failing line |
+| Rule | Fails on |
 |---|---|
-| Field names follow OTel semconv (§2) | `status=200` instead of `http.response.status_code=200` |
-| Unknown or deprecated fields (§2) | `foo_bar` isn't in semconv or the allowed list |
-| Required fields (§3) | no `service.name`, `service.version` or `deployment.environment.name` |
-| Environment values (§3) | `env=dev` instead of `development` |
-| Constant event names (§4) | `event="Loaded 3 models"` instead of `models_loaded` |
-| Failures say what failed (§12) | an error line without `error.type`, `exception.type` or a status code |
+| `adr_banned_synonym` | `status=500` instead of `http.response.status_code=500` |
+| `adr_semconv_prefix` | `http_route` instead of `http.route` |
+| `missing_attribute` | a field that isn't semconv and isn't declared by the project |
+| `deprecated` | a renamed semconv field (`gen_ai.system`) |
+| `adr_missing_required` | no `service.name`, `service.version` or `deployment.environment.name` |
+| `adr_environment_value` | `dev` instead of `development` |
+| `adr_event_name` | `event="Loaded 3 models"` instead of `models_loaded` |
+| `adr_failure_context` | an error line without `exception.type`, `error.type` or a status code |
 
-## Use it in your project
+The standard is in [docs/standard.md](docs/standard.md), and each rule's fix is in
+[docs/rules.md](docs/rules.md).
 
-**1. Capture the logs.** Run the service (tests, or `docker compose` smoke) with
-JSON logging and save stdout:
+## Use it in a project
 
 ```bash
-docker compose logs --no-log-prefix myservice > logs.jsonl
+logwarden init --agent                       # fields file + agent instructions
+LOGWARDEN_CAPTURE=logs.jsonl pytest          # capture logs (pytest plugin)
+logwarden check logs.jsonl                   # check them
 ```
 
-**2. Check them in CI:**
-
 ```yaml
-- uses: Ingeniator/logwarden@v0.1.0
+# CI
+- uses: Ingeniator/logwarden@v0.2.0
   with:
     logs: logs.jsonl
 ```
 
-To run it locally, use `make check LOGS=logs.jsonl` inside this repo. It downloads
-[OTel Weaver](https://github.com/open-telemetry/weaver) on first run and needs `jq`.
+See [docs/integration.md](docs/integration.md) for installation, capturing logs from any
+stack, project-only fields and migrating a legacy service.
 
-**3. Allow fields that only your service uses.** Fields that are neither OTel
-semconv nor in `registry/logwarden.yaml` fail as `missing_attribute`. If a field
-is used by several services, add it to `registry/logwarden.yaml` here. If only
-your service uses it, keep a small registry in your repo and pass it with
-`--registry` (`registry:` in the GitHub Action).
+## For AI agents
+
+- **Agents using logwarden in another project:** read
+  [skills/logwarden/SKILL.md](skills/logwarden/SKILL.md). `logwarden init --agent`
+  installs it, along with an `AGENTS.md` section.
+- **MCP:** `uv run --script mcp/server.py` provides `check_logs`, `explain_rule`,
+  `list_rules` and `get_standard`.
+- **Machine output:** `logwarden check --json` gives each finding's line number, rule
+  and fix hint.
+- **Agents working on this repo:** read [AGENTS.md](AGENTS.md).
 
 ## How it works
 
-It converts each log line into a sample for OTel Weaver `registry live-check`. Weaver
-compares the sample with the semconv registry and runs the ADR rules in
-`policies/logwarden.rego`. `make test` checks that the line in
-`examples/good.jsonl` passes and that every line in `examples/bad.jsonl` fails.
+Each log line becomes a sample for [OTel Weaver](https://github.com/open-telemetry/weaver)
+`registry live-check`. Weaver checks the sample's field names against the semconv
+registry (plus `registry/` and the project's `logwarden-fields.yaml`) and runs the rules
+in `policies/logwarden.rego`. Requirements are `bash`, `jq` and `curl`. Weaver is
+downloaded on first use.
 
-## Not covered (yet)
+## Not covered yet
 
-- Source-code rules (Ruff `G`/`LOG`, Semgrep) are listed in the ADR.
-- Checks across the whole run, such as "every upstream has a failure-path log".
-- Non-JSON lines, which are currently skipped.
-- `logwarden report`, an HTML report, is planned.
+- Checks across the whole run, such as "every upstream has a logged failure test".
+- Failing on non-JSON lines (they're counted as skipped for now).
+- `logwarden report`, an HTML report.
+- Source-code rules (Ruff, Semgrep) are separate. See the standard's enforcement notes.

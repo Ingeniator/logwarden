@@ -1,3 +1,7 @@
 .tools/
 .DS_Store
 *.report/
+__pycache__/
+*.egg-info/
+dist/
+logwarden.report/

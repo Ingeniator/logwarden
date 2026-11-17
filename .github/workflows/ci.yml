@@ -9,3 +9,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make test
+
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: good logs pass
+        uses: ./
+        with:
+          logs: examples/good.jsonl
+      - name: bad logs, report only, do not fail
+        uses: ./
+        with:
+          logs: examples/bad.jsonl
+          fail: "false"
+      - name: bad logs fail
+        id: bad
+        continue-on-error: true
+        uses: ./
+        with:
+          logs: examples/bad.jsonl
+      - name: expect failure
+        if: steps.bad.outcome != 'failure'
+        run: exit 1
+
+  pytest-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install . && mkdir -p /tmp/t
+      - run: |
+          cat > /tmp/t/test_x.py <<'PY'
+          import json, logging
+          def test_emits():
+              logging.getLogger("app").info(json.dumps({"event": "thing_done"}))
+          PY
+          cd /tmp/t && LOGWARDEN_CAPTURE=/tmp/t/logs.jsonl python -m pytest -q
+          grep -q thing_done /tmp/t/logs.jsonl

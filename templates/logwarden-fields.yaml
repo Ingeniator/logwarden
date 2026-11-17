@@ -1,0 +1,24 @@
+# Project-only log fields for logwarden (https://github.com/Ingeniator/logwarden).
+#
+# Add a field here only when ALL of these are true:
+#   - OTel semantic conventions have no name for it. Check
+#     https://opentelemetry.io/docs/specs/semconv/registry/attributes/ first.
+#   - It is snake_case, has no dots and doesn't start with a semconv
+#     namespace (http_, db_, url_, server_, user_, gen_ai_, ...).
+#   - It's safe to log: no secrets, personal data, prompts or raw bodies.
+# Fields that several services share belong in logwarden's registry/logwarden.yaml.
+#
+# Example:
+#
+# groups:
+#   - id: registry.myservice.log
+#     type: attribute_group
+#     display_name: myservice log fields
+#     brief: Fields only myservice logs.
+#     attributes:
+#       - id: job_id
+#         type: string          # string | int | double | boolean | string[]
+#         stability: development
+#         brief: Background job id.
+#         examples: ["job_42"]
+groups: []

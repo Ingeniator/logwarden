@@ -1,30 +1,36 @@
 name: logwarden
-description: Check structlog JSON logs against the ADR-0001 structured logging standard.
+description: Guardrail for structured logs. Checks JSON-lines logs against the logwarden logging standard.
 inputs:
   logs:
     description: Path to a JSON-lines log file captured from tests or a smoke run.
     required: true
-  registry:
-    description: Optional registry overlay with service-specific fields.
+  fields:
+    description: Project-only fields file (default ./logwarden-fields.yaml if present).
     required: false
     default: ""
-  weaver-version:
-    description: OTel Weaver release to use.
+  fail:
+    description: Fail the step on violations. Set "false" to only report while migrating.
     required: false
-    default: v0.28.0
+    default: "true"
 runs:
   using: composite
   steps:
-    - name: Install weaver
-      shell: bash
-      run: |
-        dir="$RUNNER_TEMP/weaver"
-        mkdir -p "$dir"
-        curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/${{ inputs.weaver-version }}/weaver-x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C "$dir"
-        echo "WEAVER=$dir/weaver-x86_64-unknown-linux-gnu/weaver" >> "$GITHUB_ENV"
     - name: Check logs
       shell: bash
+      env:
+        LW_LOGS: ${{ inputs.logs }}
+        LW_FIELDS: ${{ inputs.fields }}
+        LW_FAIL: ${{ inputs.fail }}
       run: |
-        args=(check "${{ inputs.logs }}" -o logwarden.report)
-        [ -n "${{ inputs.registry }}" ] && args+=(--registry "${{ inputs.registry }}")
-        "${{ github.action_path }}/bin/logwarden" "${args[@]}"
+        args=(check "$LW_LOGS" -o logwarden.report --max 50)
+        [ -n "$LW_FIELDS" ] && args+=(--fields "$LW_FIELDS")
+        mkdir -p logwarden.report
+        set +e
+        "${{ github.action_path }}/bin/logwarden" "${args[@]}" | tee logwarden.report/summary.txt
+        rc=${PIPESTATUS[0]}
+        set -e
+        { echo "### logwarden"; echo '```'; cat logwarden.report/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$rc" -eq 1 ] && [ "$LW_FAIL" != "true" ]; then
+          echo "::warning::logwarden found violations (report only)"; exit 0
+        fi
+        exit "$rc"
