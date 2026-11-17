@@ -79,7 +79,8 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Docker image for CI without Python.
 - Capture over OTLP (Weaver's live-check receiver), for any language with an OTel SDK.
 - Setup recipes for Node (pino), Go (slog) and Java (logback), with example output that passes.
-- Source-code presets: Ruff config and Semgrep rules (`logwarden lint-code`).
+- Source-code presets: Semgrep rules and a `logwarden lint-code` command. (The Ruff and
+  sloglint config has been recommended in `docs/integration.md` §6 since 2026-11-18.)
 
 ### Later
 HTML report, with a diff against the base branch · PR comment with new/fixed counts · event-name catalog.

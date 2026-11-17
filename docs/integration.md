@@ -1,7 +1,8 @@
 # Connecting a project to logwarden
 
 Four steps: install, capture logs, check in CI, set up agents. Each step is independent,
-and most projects need about 10 lines of config.
+and most projects need about 10 lines of config. A source linter (§6) is a recommended
+addition.
 
 ## 1. Install
 
@@ -95,3 +96,51 @@ give the same result.
 
 The skill tells the agent to fix findings in its own changes, never silence them,
 and not to rewrite unrelated legacy logging unless asked.
+
+## 6. Lint the source too (recommended)
+
+logwarden checks the logs a run produces, so it only sees code paths that ran. A source
+linter catches some of the same mistakes in every file, before anything runs. Run both:
+the linter in your normal lint step, and logwarden on the captured logs.
+
+**Python: Ruff.** It works for stdlib `logging` and for structlog loggers such as
+`log = structlog.get_logger()`.
+
+```toml
+# pyproject.toml
+[tool.ruff.lint]
+extend-select = ["LOG", "G", "TRY400"]
+```
+
+| Ruff rule | Catches | logwarden rule it prevents |
+|---|---|---|
+| `G001`–`G004` | f-string, `%` or `.format()` in the log message | `adr_event_name` |
+| `TRY400` | `logger.error(...)` in `except` without the traceback (use `logger.exception`) | `adr_failure_context` |
+| `LOG014` | `exc_info=` outside an exception handler | (logs an empty traceback) |
+| `LOG015` | logging on the root logger | (no `logger` name) |
+| `G010` | deprecated `logger.warn` | |
+
+If your logger object has another name, list it in Ruff's `lint.logger-objects` setting.
+
+**Go: sloglint** (part of golangci-lint) for `log/slog`:
+
+```yaml
+# .golangci.yaml
+version: "2"
+linters:
+  enable: [sloglint]
+  settings:
+    sloglint:
+      static-msg: true      # constant message = event name (adr_event_name)
+      no-mixed-args: true
+      forbidden-keys: [status, status_code, path, method, url, host, model,
+                       traceback, err, error, exception, uid, env, headers]  # adr_banned_synonym
+```
+
+Don't enable `key-naming-case: snake`. It treats `.` as a word separator, so it flags the
+correct semconv key `http.route` and its autofix rewrites it to `http_route`, which
+logwarden then reports as `adr_semconv_prefix`. The `forbidden-keys` list is logwarden's
+banned-synonym list (§2 of the standard); if it changes, update it here too.
+
+A source linter can't see fields added by processors or middleware, or check that required
+fields and failure context are actually present, so it doesn't replace logwarden.

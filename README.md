@@ -53,6 +53,10 @@ logwarden check logs.jsonl                  # check them
     logs: logs.jsonl
 ```
 
+Also lint the source: Ruff `LOG`, `G` and `TRY400` rules for Python, and sloglint for Go, catch
+some of the same mistakes in every file before anything runs. The recommended config is in
+[docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
+
 Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
 See [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md) for capturing logs from any stack,
 project-only fields and migrating a legacy service.
