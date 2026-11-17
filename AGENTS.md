@@ -81,7 +81,7 @@ Every version follows **notes first, verify last**:
    `.claude-plugin/marketplace.json` and the `logwarden[mcp]==` pin in `plugin/.mcp.json`
    (`tests/test_versions.py` checks they agree). Update the `@vX.Y.Z` references in
    `README.md` and `docs/integration.md`, set the notes' status to `Released <date> ·
-   commit <sha>`, and update `CHANGELOG.md`.
+   tag vX.Y.Z` (post-release checks such as installing from PyPI are added after publishing), and update `CHANGELOG.md`.
 5. Commit, wait for CI to pass, then `git tag -a vX.Y.Z -m "..."` and
    `git push origin vX.Y.Z`. The `release` workflow refuses a tag whose notes aren't
    marked Released. It publishes to PyPI with trusted publishing and creates the GitHub
