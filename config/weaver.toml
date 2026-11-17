@@ -1,0 +1,3 @@
+# Drop findings that only say "this semconv attribute is not stable yet".
+[[live-check.finding_filters]]
+exclude = ["not_stable"]

@@ -1,0 +1,33 @@
+# Non-semconv fields that ADR-0001 allows in every service (§2/§3/§12).
+# Service-specific fields belong in the consuming repo's own registry overlay.
+groups:
+  - id: registry.logwarden.log
+    type: attribute_group
+    display_name: logwarden common log fields
+    brief: Domain fields allowed in logs alongside OTel semantic conventions.
+    attributes:
+      - id: logger
+        type: string
+        stability: development
+        brief: Logger name (Python module path).
+        examples: ["app.core.app"]
+      - id: request_id
+        type: string
+        stability: development
+        brief: Correlation id taken from the x-request-id header.
+        examples: ["9f1c2d"]
+      - id: duration_ms
+        type: double
+        stability: development
+        brief: Duration in milliseconds.
+        examples: [12.5]
+      - id: upstream_request_id
+        type: string
+        stability: development
+        brief: Request id returned by an upstream service (ADR-0001 §12).
+        examples: ["req_abc123"]
+      - id: upstream_error_message
+        type: string
+        stability: development
+        brief: Scrubbed upstream error message, at most 500 chars (ADR-0001 §12).
+        examples: ["rate limit exceeded"]

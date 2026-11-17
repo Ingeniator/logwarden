@@ -1,0 +1,2 @@
+{"timestamp":"2026-11-14T10:00:00Z","level":"info","event":"Loaded 3 models","logger":"x","status":200,"http_route":"/a","service.name":"yallmp","deployment.environment.name":"dev"}
+{"timestamp":"2026-11-14T10:00:01Z","level":"error","event":"upstream_call_failed","logger":"app.clients.llm","service.name":"yallmp","service.version":"1","deployment.environment.name":"production"}

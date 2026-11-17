@@ -1,0 +1,30 @@
+name: logwarden
+description: Check structlog JSON logs against the ADR-0001 structured logging standard.
+inputs:
+  logs:
+    description: Path to a JSON-lines log file captured from tests or a smoke run.
+    required: true
+  registry:
+    description: Optional registry overlay with service-specific fields.
+    required: false
+    default: ""
+  weaver-version:
+    description: OTel Weaver release to use.
+    required: false
+    default: v0.28.0
+runs:
+  using: composite
+  steps:
+    - name: Install weaver
+      shell: bash
+      run: |
+        dir="$RUNNER_TEMP/weaver"
+        mkdir -p "$dir"
+        curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/${{ inputs.weaver-version }}/weaver-x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C "$dir"
+        echo "WEAVER=$dir/weaver-x86_64-unknown-linux-gnu/weaver" >> "$GITHUB_ENV"
+    - name: Check logs
+      shell: bash
+      run: |
+        args=(check "${{ inputs.logs }}" -o logwarden.report)
+        [ -n "${{ inputs.registry }}" ] && args+=(--registry "${{ inputs.registry }}")
+        "${{ github.action_path }}/bin/logwarden" "${args[@]}"

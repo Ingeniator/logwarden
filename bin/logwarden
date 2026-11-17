@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# logwarden: check service logs against ADR-0001 (structured logging standard).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WEAVER="${WEAVER:-weaver}"
+VERSION="0.1.0"
+
+usage() {
+  cat <<EOF
+logwarden $VERSION
+
+Usage:
+  logwarden check  <logs.jsonl> [-o DIR] [--registry DIR] [--json]
+  logwarden report <logs.jsonl> [-o FILE]     (not implemented yet)
+  logwarden version
+
+check   Convert structlog JSON lines to Weaver samples, run 'weaver registry
+        live-check' with the logwarden registry and policies, print a summary.
+        Exits 1 when any violation is found.
+
+Options:
+  -o DIR          keep Weaver output in DIR (default: temp dir, removed)
+  --registry DIR  extra registry overlay with service-specific fields
+                  (its manifest must depend on logwarden's registry)
+  --json          print the summary as JSON instead of text
+
+Env:
+  WEAVER          path to the weaver binary (default: weaver on PATH)
+EOF
+}
+
+die() { echo "logwarden: $*" >&2; exit 2; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' not found (see README: Requirements)"; }
+
+cmd_check() {
+  local input="" out="" registry="$ROOT/registry" as_json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -o) out="$2"; shift 2 ;;
+      --registry) registry="$2"; shift 2 ;;
+      --json) as_json=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "unknown option $1" ;;
+      *) input="$1"; shift ;;
+    esac
+  done
+  [[ -n "$input" ]] || die "check: missing <logs.jsonl>"
+  [[ -f "$input" ]] || die "check: no such file: $input"
+  need jq; need "$WEAVER"
+
+  local keep=1
+  if [[ -z "$out" ]]; then out="$(mktemp -d)"; keep=0; fi
+  mkdir -p "$out"
+
+  # Non-JSON lines (uvicorn banners, tracebacks printed raw) are skipped here;
+  # a separate §1 check should fail on them.
+  jq -R 'fromjson? // empty' "$input" | jq -s -f "$ROOT/lib/to-weaver.jq" > "$out/samples.json"
+
+  "$WEAVER" registry live-check \
+      --registry "$registry" \
+      --include-unreferenced \
+      --config "$ROOT/config/weaver.toml" \
+      --advice-policies "$ROOT/policies" \
+      --input-source "$out/samples.json" \
+      --input-format json \
+      --format json \
+      --output "$out" \
+      --quiet >"$out/weaver.log" 2>&1 || true
+
+  [[ -s "$out/live_check.json" ]] || { cat "$out/weaver.log" >&2; die "weaver produced no report"; }
+
+  jq -f "$ROOT/lib/summary.jq" "$out/live_check.json" > "$out/summary.json"
+
+  if [[ $as_json -eq 1 ]]; then
+    cat "$out/summary.json"
+  else
+    jq -r '
+      "logwarden: \(.samples) log records, \(.violations) violations",
+      (.by_rule[] | "  \(.count)\t\(.rule)\n\t  e.g. \(.example)"),
+      (if (.other_advice|length) > 0 then "advice (not failing):" else empty end),
+      (.other_advice[] | "  \(.count)\t\(.rule) [\(.level)]")
+    ' "$out/summary.json"
+  fi
+
+  local violations; violations="$(jq '.violations' "$out/summary.json")"
+  [[ $keep -eq 1 ]] && echo "report: $out/live_check.json" >&2 || rm -rf "$out"
+  [[ "$violations" -eq 0 ]]
+}
+
+case "${1:-}" in
+  check) shift; cmd_check "$@" ;;
+  report) die "report: not implemented yet (planned: HTML report like the ADR explainer)" ;;
+  version|--version) echo "$VERSION" ;;
+  ""|-h|--help|help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac
