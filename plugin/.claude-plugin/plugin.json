@@ -8,5 +8,11 @@
   },
   "homepage": "https://github.com/Ingeniator/logwarden",
   "repository": "https://github.com/Ingeniator/logwarden",
-  "keywords": ["logging", "observability", "opentelemetry", "lint"]
+  "keywords": [
+    "logging",
+    "observability",
+    "opentelemetry",
+    "lint"
+  ],
+  "license": "Apache-2.0"
 }

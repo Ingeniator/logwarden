@@ -4,6 +4,8 @@ dynamic = ["version"]
 description = "Guardrail for structured logs: checks JSON logs against an OpenTelemetry-based logging standard"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Ingeniator" }]
 keywords = ["logging", "observability", "opentelemetry", "semconv", "lint", "structlog", "ci", "mcp"]
 classifiers = [
@@ -36,7 +38,7 @@ logwarden = "logwarden.pytest_plugin"
 dev = ["pytest>=8", "mcp>=2,<3"]
 
 [build-system]
-requires = ["hatchling>=1.26"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
@@ -50,7 +52,7 @@ packages = ["src/logwarden"]
 "docs/rules.md" = "logwarden/_data/docs/rules.md"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "docs", "tests", "examples", "README.md", "CHANGELOG.md"]
+include = ["src", "docs", "tests", "examples", "README.md", "CHANGELOG.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

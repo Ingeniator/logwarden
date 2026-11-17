@@ -83,3 +83,7 @@ SHA-256.
 See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md). Next up: baseline mode for legacy services, a
 sensitive-data rule, non-JSON lines, and a logging-setup library. Release notes are in
 [CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md).
+
+## License
+
+[Apache-2.0](https://github.com/Ingeniator/logwarden/blob/main/LICENSE)
