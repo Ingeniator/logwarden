@@ -14,7 +14,9 @@ def text(result: dict, max_findings: int = 20) -> str:
     out = []
     head = f"logwarden: {result['records']} records, {result['violations']} violations"
     if result["skipped_lines"] > 0:
-        head += f" ({result['skipped_lines']} non-JSON lines skipped)"
+        head += f" ({result['skipped_lines']} blank or non-JSON lines)"
+    if result.get("baselined"):
+        head += f", {result['baselined']} more known in baseline {result['baseline']}"
     out.append(head)
     if result["violations"] == 0:
         out.append("OK")
@@ -34,4 +36,9 @@ def text(result: dict, max_findings: int = 20) -> str:
         out.append("  ... use --json or -o DIR for all")
     if result["advice"]:
         out.append("\nnot failing: " + ", ".join(f"{a['rule']}={a['count']}" for a in result["advice"]))
+    for d in result.get("disabled") or []:
+        out.append(f"disabled: {d['rule']} (not counted: {d['count']}): {d['reason']}")
+    if result.get("baseline_fixed"):
+        out.append(f"baseline: {result['baseline_fixed']} entries no longer occur; "
+                   "run 'logwarden baseline' to shrink it")
     return "\n".join(out)

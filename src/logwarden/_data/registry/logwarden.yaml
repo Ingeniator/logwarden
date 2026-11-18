@@ -1,4 +1,4 @@
-# Non-semconv fields that ADR-0001 allows in every service (§2/§3/§12).
+# Non-semconv fields that the logging standard allows in every service (§2/§3/§10).
 # Service-specific fields belong in the consuming repo's own registry overlay.
 groups:
   - id: registry.logwarden.log
@@ -24,10 +24,10 @@ groups:
       - id: upstream_request_id
         type: string
         stability: development
-        brief: Request id returned by an upstream service (ADR-0001 §12).
+        brief: Request id returned by an upstream service (standard §10).
         examples: ["req_abc123"]
       - id: upstream_error_message
         type: string
         stability: development
-        brief: Scrubbed upstream error message, at most 500 chars (ADR-0001 §12).
+        brief: Scrubbed upstream error message, at most 500 chars (standard §10).
         examples: ["rate limit exceeded"]

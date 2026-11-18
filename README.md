@@ -33,6 +33,9 @@ findings (first 20):
 | `adr_environment_value` | `dev` instead of `development` |
 | `adr_event_name` | `event="Loaded 3 models"` instead of `models_loaded` |
 | `adr_failure_context` | an error line without `exception.type`, `error.type` or a status code |
+| `adr_sensitive_data` | `password=...`, a JWT, an API key, `user:pass@` in a URL, an email or card number |
+| `adr_non_json_line` | a plain-text line (a library banner, a printed traceback) |
+| `adr_trace_context` | a `trace_id`/`span_id` that isn't W3C lowercase hex |
 
 The standard is in [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md), and each rule's fix is in
 [docs/rules.md](https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md).
@@ -48,7 +51,7 @@ logwarden check logs.jsonl                  # check them
 
 ```yaml
 # CI
-- uses: Ingeniator/logwarden@v0.3.0
+- uses: Ingeniator/logwarden@v0.4.0
   with:
     logs: logs.jsonl
 ```
@@ -58,6 +61,8 @@ some of the same mistakes in every file before anything runs. The recommended co
 [docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
 
 Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
+On an existing service, `logwarden baseline logs.jsonl` records today's findings so CI
+fails only on new ones.
 See [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md) for capturing logs from any stack,
 project-only fields and migrating a legacy service.
 

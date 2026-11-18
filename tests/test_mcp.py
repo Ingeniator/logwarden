@@ -49,6 +49,17 @@ def test_stdio_tools(tmp_path):
             assert good["ok"] is True
 
             assert "error" in payload(await s.call_tool("check_logs", {}))
+
+            # v0.4.0 claim 10: the project's disable/baseline apply to check_logs.
+            (tmp_path / "logwarden.toml").write_text(
+                'disable = { adr_event_name = "legacy" }\nbaseline = "bl.json"\n')
+            assert "not found" in payload(await s.call_tool("check_logs", {"lines": BAD}))["error"]
+            (tmp_path / "logs.jsonl").write_text(BAD + "\n")
+            assert subprocess.run([sys.executable, "-m", "logwarden", "baseline", "logs.jsonl",
+                                   "--output", "bl.json"], cwd=tmp_path).returncode == 0
+            res = payload(await s.call_tool("check_logs", {"path": str(tmp_path / "logs.jsonl")}))
+            assert res["ok"] is True and res["baselined"] > 0
+            assert res["disabled"][0]["rule"] == "adr_event_name"
             text = (await s.call_tool("explain_rule", {"rule_id": "adr_failure_context"})).content[0].text
             assert text.startswith("## adr_failure_context")
             std = (await s.call_tool("get_standard", {})).content[0].text

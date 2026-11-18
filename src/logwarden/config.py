@@ -13,15 +13,19 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"fields"}
+KNOWN_KEYS = {"fields", "baseline", "disable"}
 DEFAULT_FIELDS = "logwarden-fields.yaml"
+DEFAULT_BASELINE = ".logwarden-baseline.json"
 
 
 @dataclass
 class Config:
     fields: str | None = None
+    baseline: str | None = None
+    disable: dict[str, str] = field(default_factory=dict)
     source: str | None = None
     warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)   # fatal: exit 2
 
 
 def load(cwd: Path) -> Config:
@@ -41,11 +45,31 @@ def load(cwd: Path) -> Config:
         return cfg
     for key in sorted(set(data) - KNOWN_KEYS):
         cfg.warnings.append(f"{cfg.source}: unknown key '{key}' (known: {', '.join(sorted(KNOWN_KEYS))})")
-    if isinstance(data.get("fields"), str):
-        cfg.fields = str((cwd / data["fields"]))
-    elif "fields" in data:
-        cfg.warnings.append(f"{cfg.source}: 'fields' must be a path string")
+    for key in ("fields", "baseline"):
+        if isinstance(data.get(key), str):
+            setattr(cfg, key, str(cwd / data[key]))
+        elif key in data:
+            cfg.warnings.append(f"{cfg.source}: '{key}' must be a path string")
+    if "disable" in data:
+        _disable(data["disable"], cfg)
     return cfg
+
+
+def _disable(value, cfg: Config) -> None:
+    from logwarden import data as lwdata
+
+    example = 'disable = { adr_non_json_line = "why this rule is off" }'
+    if not isinstance(value, dict):
+        cfg.errors.append(f"{cfg.source}: 'disable' needs a reason per rule: {example}")
+        return
+    known = lwdata.rules()
+    for rule, reason in value.items():
+        if rule not in known:
+            cfg.errors.append(f"{cfg.source}: disable: unknown rule '{rule}' (run: logwarden rules)")
+        elif not isinstance(reason, str) or not reason.strip():
+            cfg.errors.append(f"{cfg.source}: disable: rule '{rule}' needs a non-empty reason: {example}")
+        else:
+            cfg.disable[rule] = reason.strip()
 
 
 def _read(p: Path, cfg: Config) -> dict | None:

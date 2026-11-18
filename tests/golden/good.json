@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "ok": true,
   "records": 2,
   "skipped_lines": 0,
@@ -14,5 +14,9 @@
       "level": "information",
       "count": 1
     }
-  ]
+  ],
+  "baseline": null,
+  "baselined": 0,
+  "baseline_fixed": 0,
+  "disabled": []
 }

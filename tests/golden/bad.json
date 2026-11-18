@@ -1,10 +1,10 @@
 {
   "tool": "logwarden",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "ok": false,
-  "records": 2,
+  "records": 3,
   "skipped_lines": 1,
-  "violations": 7,
+  "violations": 10,
   "by_rule": [
     {
       "rule": "adr_banned_synonym",
@@ -36,7 +36,7 @@
       "title": "Failure line does not say what failed",
       "hint": "On warning/error and *_failed lines log exc_info=True (gives exception.type), or error.type, or http.response.status_code.",
       "doc": "docs/rules.md#adr_failure_context",
-      "example": "§12: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+      "example": "§10: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
     },
     {
       "rule": "adr_missing_required",
@@ -47,12 +47,36 @@
       "example": "§3: required field 'service.version' missing"
     },
     {
+      "rule": "adr_non_json_line",
+      "count": 1,
+      "title": "Line is not a JSON object",
+      "hint": "Route every logger (including third-party libraries) through the JSON formatter. If the input mixes in non-log output, capture only the service's output.",
+      "doc": "docs/rules.md#adr_non_json_line",
+      "example": "§1: line is not a JSON object (plain text)"
+    },
+    {
       "rule": "adr_semconv_prefix",
       "count": 1,
       "title": "Semconv name written with underscores",
       "hint": "Use the dotted semconv key (http_route -> http.route). In structlog pass it as **{\"http.route\": value}.",
       "doc": "docs/rules.md#adr_semconv_prefix",
       "example": "§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'"
+    },
+    {
+      "rule": "adr_sensitive_data",
+      "count": 1,
+      "title": "Secret or personal data in a log line",
+      "hint": "Don't log secrets, tokens, credentials, emails or card numbers. Log an id, a size or a redacted value instead, and redact in the shared processor.",
+      "doc": "docs/rules.md#adr_sensitive_data",
+      "example": "§8: 'password' holds a secret or credential; don't log it (log an id or a redacted value)"
+    },
+    {
+      "rule": "adr_trace_context",
+      "count": 1,
+      "title": "trace_id/span_id not in W3C format",
+      "hint": "Take trace_id and span_id from the active OTel span: format(ctx.trace_id, \"032x\") and format(ctx.span_id, \"016x\"); omit both when no span is active.",
+      "doc": "docs/rules.md#adr_trace_context",
+      "example": "§7: trace_id must be 32 lowercase hex characters (W3C), not all zeros"
     },
     {
       "rule": "missing_attribute",
@@ -107,11 +131,32 @@
       "message": "§4: event 'Loaded 3 models' must be a constant snake_case name"
     },
     {
+      "line": 2,
+      "event": null,
+      "rule": "adr_non_json_line",
+      "field": null,
+      "message": "§1: line is not a JSON object (plain text)"
+    },
+    {
       "line": 3,
       "event": "upstream_call_failed",
       "rule": "adr_failure_context",
       "field": null,
-      "message": "§12: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+      "message": "§10: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+    },
+    {
+      "line": 4,
+      "event": "user_logged_in",
+      "rule": "adr_sensitive_data",
+      "field": "password",
+      "message": "§8: 'password' holds a secret or credential; don't log it (log an id or a redacted value)"
+    },
+    {
+      "line": 4,
+      "event": "user_logged_in",
+      "rule": "adr_trace_context",
+      "field": "trace_id",
+      "message": "§7: trace_id must be 32 lowercase hex characters (W3C), not all zeros"
     }
   ],
   "findings_truncated": false,
@@ -121,5 +166,9 @@
       "level": "information",
       "count": 1
     }
-  ]
+  ],
+  "baseline": null,
+  "baselined": 0,
+  "baseline_fixed": 0,
+  "disabled": []
 }

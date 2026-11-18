@@ -11,8 +11,9 @@ The standard builds on the OpenTelemetry
 
 ## 1. Format
 
-- One JSON object per line, written to stdout. The platform collects it. The service
-  doesn't write log files or ship logs itself.
+- **[checked]** One JSON object per line, written to stdout. The platform collects it. The
+  service doesn't write log files or ship logs itself.
+  [`adr_non_json_line`](rules.md#adr_non_json_line)
 - Third-party library logs go through the same formatter, so every line is JSON.
 - Human-readable console output is for local development only.
 - `timestamp` is ISO-8601 UTC.
@@ -85,6 +86,9 @@ log.info("import_completed", rows_imported=n)  # ✅
 ## 7. Correlation
 
 - Add `trace_id`/`span_id` from the active OTel span in a shared processor.
+- **[checked]** `trace_id` is 32 and `span_id` 16 lowercase hex characters (W3C), never all
+  zeros, and `span_id` only with a `trace_id`. Omit both when no span is active.
+  [`adr_trace_context`](rules.md#adr_trace_context)
 - Bind `request_id` and `job_id` once per request or job (contextvars), and clear them at
   the start of each request or job.
 
@@ -93,6 +97,11 @@ log.info("import_completed", rows_imported=n)  # ✅
 Secrets, tokens, auth headers, credentials in DSNs. LLM prompts and completions, chat
 messages, user-uploaded data, full request or response bodies. Personal data unless it's
 required. Log IDs, sizes and counts instead.
+
+**[checked]** for secret-named fields and for values that look like tokens, keys,
+credentials in URLs, email addresses or card numbers.
+[`adr_sensitive_data`](rules.md#adr_sensitive_data). Prompts, chat content and bodies
+can't be recognised by pattern, so they stay a code-review item.
 
 ## 9. Noise
 

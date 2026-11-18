@@ -30,10 +30,28 @@
     "doc": "docs/rules.md#adr_environment_value"
   },
   "adr_failure_context": {
-    "section": "§12",
+    "section": "§10",
     "title": "Failure line does not say what failed",
     "hint": "On warning/error and *_failed lines log exc_info=True (gives exception.type), or error.type, or http.response.status_code.",
     "doc": "docs/rules.md#adr_failure_context"
+  },
+  "adr_sensitive_data": {
+    "section": "§8",
+    "title": "Secret or personal data in a log line",
+    "hint": "Don't log secrets, tokens, credentials, emails or card numbers. Log an id, a size or a redacted value instead, and redact in the shared processor.",
+    "doc": "docs/rules.md#adr_sensitive_data"
+  },
+  "adr_non_json_line": {
+    "section": "§1",
+    "title": "Line is not a JSON object",
+    "hint": "Route every logger (including third-party libraries) through the JSON formatter. If the input mixes in non-log output, capture only the service's output.",
+    "doc": "docs/rules.md#adr_non_json_line"
+  },
+  "adr_trace_context": {
+    "section": "§7",
+    "title": "trace_id/span_id not in W3C format",
+    "hint": "Take trace_id and span_id from the active OTel span: format(ctx.trace_id, \"032x\") and format(ctx.span_id, \"016x\"); omit both when no span is active.",
+    "doc": "docs/rules.md#adr_trace_context"
   },
   "missing_attribute": {
     "section": "§2",

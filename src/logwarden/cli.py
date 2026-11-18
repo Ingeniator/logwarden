@@ -30,11 +30,16 @@ def _read_input(src: str) -> str:
     return p.read_bytes().decode("utf-8", errors="replace")
 
 
-def resolve_fields(arg: str | None, registry: str | None, cwd: Path) -> Path | None:
-    """--fields, then $LOGWARDEN_FIELDS, then config `fields`, then ./logwarden-fields.yaml."""
+def _load_config(cwd: Path) -> config.Config:
     cfg = config.load(cwd)
     for w in cfg.warnings:
         _err(f"warning: {w}")
+    if cfg.errors:
+        raise UsageError("\n".join(cfg.errors))
+    return cfg
+
+
+def _fields(arg: str | None, registry: str | None, cwd: Path, cfg: config.Config) -> Path | None:
     if registry:
         if arg:
             raise UsageError("check: use --fields or --registry, not both")
@@ -49,13 +54,37 @@ def resolve_fields(arg: str | None, registry: str | None, cwd: Path) -> Path | N
     return default if default.is_file() else None
 
 
+def resolve_fields(arg: str | None, registry: str | None, cwd: Path) -> Path | None:
+    """--fields, then $LOGWARDEN_FIELDS, then config `fields`, then ./logwarden-fields.yaml."""
+    return _fields(arg, registry, cwd, _load_config(cwd))
+
+
+def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None,
+            baseline: str | None = None, no_baseline: bool = False) -> tuple[Path | None, check.Policy]:
+    """Fields file and policy (disabled rules, baseline) for a check run in `cwd`."""
+    cfg = _load_config(cwd)
+    policy = check.Policy(disabled=dict(cfg.disable))
+    chosen = None if no_baseline else (baseline or cfg.baseline)
+    if chosen:
+        p = Path(chosen)
+        if not p.is_file():
+            raise UsageError(f"baseline {chosen} not found; create it with 'logwarden baseline <logs>'")
+        try:
+            policy.baseline = check.load_baseline(p)
+        except check.CheckError as e:
+            raise UsageError(str(e)) from e
+        policy.baseline_path = os.path.relpath(p, cwd) if p.is_absolute() else str(p)
+    return _fields(fields, registry, cwd, cfg), policy
+
+
 def cmd_check(a: argparse.Namespace) -> int:
     text = _read_input(a.input)
-    fields = resolve_fields(a.fields, a.registry, Path.cwd())
+    fields, policy = resolve(Path.cwd(), fields=a.fields, registry=a.registry,
+                             baseline=a.baseline, no_baseline=a.no_baseline)
     try:
         result = check.run(text, fields=fields,
                            registry=Path(a.registry) if a.registry else None,
-                           out=Path(a.o) if a.o else None)
+                           out=Path(a.o) if a.o else None, policy=policy)
     except check.CheckError as e:
         raise UsageError(str(e)) from e
     if a.json:
@@ -65,6 +94,27 @@ def cmd_check(a: argparse.Namespace) -> int:
     if a.o:
         _err(f"full output in {a.o}")
     return 0 if result["ok"] else 1
+
+
+def cmd_baseline(a: argparse.Namespace) -> int:
+    cwd = Path.cwd()
+    text = _read_input(a.input)
+    fields, policy = resolve(cwd, fields=a.fields, registry=a.registry, no_baseline=True)
+    cfg_path = config.load(cwd).baseline
+    target = Path(a.output or cfg_path or cwd / config.DEFAULT_BASELINE)
+    try:
+        found, _, _ = check.evaluate(text, fields=fields,
+                                     registry=Path(a.registry) if a.registry else None)
+    except check.CheckError as e:
+        raise UsageError(str(e)) from e
+    content = check.make_baseline(found, policy)
+    target.write_text(json.dumps(content, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    total = sum(e["count"] for e in content["entries"])
+    print(f"wrote {target}: {len(content['entries'])} entries covering {total} findings")
+    if not a.output and not cfg_path:
+        print(f'next: add  baseline = "{config.DEFAULT_BASELINE}"  to [tool.logwarden] '
+              "(or logwarden.toml) and commit both files")
+    return 0
 
 
 def cmd_rules(a: argparse.Namespace) -> int:
@@ -149,7 +199,17 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--registry", help="full Weaver registry overlay (advanced; replaces --fields)")
     c.add_argument("-o", metavar="DIR", help="keep samples.json, live_check.json and result.json in DIR")
     c.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
+    c.add_argument("--baseline", metavar="FILE", help="fail only on findings not in FILE (default: config)")
+    c.add_argument("--no-baseline", action="store_true", help="ignore the configured baseline")
     c.set_defaults(fn=cmd_check)
+
+    b = sub.add_parser("baseline", help="record current findings so check fails only on new ones")
+    b.add_argument("input", help="log file, or - for stdin")
+    b.add_argument("--output", metavar="FILE",
+                   help=f"baseline file (default: config 'baseline', then ./{config.DEFAULT_BASELINE})")
+    b.add_argument("--fields", help="project-only fields file (as for check)")
+    b.add_argument("--registry", help="full Weaver registry overlay (as for check)")
+    b.set_defaults(fn=cmd_baseline)
 
     r = sub.add_parser("rules", help="list rules, or explain one")
     r.add_argument("rule_id", nargs="?")

@@ -1,4 +1,6 @@
 """v0.3.0 claim 5: [tool.logwarden] and logwarden.toml are read; unknown keys warn."""
+import json
+
 import pytest
 
 from logwarden import cli as lwcli
@@ -21,8 +23,8 @@ def test_logwarden_toml_wins(tmp_path):
 
 
 def test_unknown_key_warns(tmp_path):
-    (tmp_path / "logwarden.toml").write_text('fields = "a.yaml"\nbaseline = "x"\n')
-    assert any("unknown key 'baseline'" in w for w in config.load(tmp_path).warnings)
+    (tmp_path / "logwarden.toml").write_text('fields = "a.yaml"\nupstreams = "x"\n')
+    assert any("unknown key 'upstreams'" in w for w in config.load(tmp_path).warnings)
 
 
 def test_no_config(tmp_path):
@@ -57,3 +59,38 @@ def test_pyproject_fields_used_by_check(cli, tmp_path):
     r = cli("check", "-", stdin=LINE, cwd=tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "unknown key 'nope'" in r.stderr
+
+
+# v0.4.0 claim 4: `disable` needs a reason, and disabled rules stay visible.
+def test_disable_parsed(tmp_path):
+    (tmp_path / "logwarden.toml").write_text('disable = { adr_event_name = " legacy events " }\n')
+    cfg = config.load(tmp_path)
+    assert cfg.disable == {"adr_event_name": "legacy events"} and not cfg.errors
+
+
+@pytest.mark.parametrize("value, error", [
+    ('["adr_event_name"]', "needs a reason per rule"),
+    ('{ adr_event_name = "" }', "needs a non-empty reason"),
+    ('{ adr_event_name = 1 }', "needs a non-empty reason"),
+    ('{ no_such_rule = "x" }', "unknown rule 'no_such_rule'"),
+])
+def test_disable_errors(tmp_path, cli, value, error):
+    (tmp_path / "logwarden.toml").write_text(f"disable = {value}\n")
+    assert any(error in e for e in config.load(tmp_path).errors)
+    r = cli("check", "-", stdin=LINE, cwd=tmp_path)
+    assert r.returncode == 2 and error in r.stderr
+
+
+@pytest.mark.weaver
+def test_disabled_rule_does_not_fail_and_is_listed(cli, tmp_path):
+    (tmp_path / "logwarden.toml").write_text(
+        'disable = { adr_non_json_line = "test runner output", missing_attribute = "fields file pending" }\n')
+    text = LINE + "plain text\n"
+    r = cli("check", "-", "--json", stdin=text, cwd=tmp_path)
+    res = json.loads(r.stdout)
+    assert r.returncode == 0 and res["ok"]
+    assert res["disabled"] == [
+        {"rule": "adr_non_json_line", "reason": "test runner output", "count": 1},
+        {"rule": "missing_attribute", "reason": "fields file pending", "count": 1}]
+    text_out = cli("check", "-", stdin=text, cwd=tmp_path).stdout
+    assert "disabled: adr_non_json_line (not counted: 1): test runner output" in text_out

@@ -22,8 +22,12 @@ Your job is to make sure the code you write produces logs that pass.
 - For failed outbound calls, log `server.address`, `http.response.status_code`, `error.type`,
   `duration_ms`, `upstream_request_id` and a scrubbed `upstream_error_message` (at most
   500 chars). Never log the raw response body.
-- Never log secrets, tokens, prompts or completions, chat content, or request/response
-  bodies.
+- Never log secrets, tokens, credentials (also not inside a URL or a nested dict), email
+  addresses, prompts or completions, chat content, or request/response bodies. Log ids,
+  sizes and counts. `trace_id`/`span_id` come from the active span in W3C hex, or not at all.
+- Every line is JSON: route third-party loggers through the formatter, and never `print()`.
+- If the project uses Ruff or golangci-lint, run it too; the recommended logging rules
+  (Ruff `LOG`, `G`, `TRY400`; sloglint) are in docs/integration.md §6 of the logwarden repo.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
   logging setup, never from call sites.
 
@@ -53,7 +57,12 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
   - adding the field to `logwarden-fields.yaml` when a semconv name exists,
   - lowering a real failure to `info` to avoid `adr_failure_context`,
   - removing the log line,
-  - editing logwarden's rules.
+  - editing logwarden's rules,
+  - running `logwarden baseline` or adding a rule to `disable` in the project config.
+    Those are the maintainers' decisions: suggest them in your summary if they seem right,
+    but only make them when asked.
+- If the project has a baseline, `check` only shows new findings. That's expected: fix
+  what your change introduced.
 - Only add a field to `logwarden-fields.yaml` when it's a real domain field: no
   semconv equivalent, snake_case, no semconv prefix, and safe to log. Say so in your
   summary.

@@ -1,10 +1,10 @@
 {
   "tool": "logwarden",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "ok": false,
   "records": 5,
   "skipped_lines": 4,
-  "violations": 16,
+  "violations": 18,
   "by_rule": [
     {
       "rule": "missing_attribute",
@@ -37,6 +37,14 @@
       "hint": "Add service.name, service.version and deployment.environment.name in one shared processor/formatter, not at call sites.",
       "doc": "docs/rules.md#adr_missing_required",
       "example": "§3: required field 'deployment.environment.name' missing"
+    },
+    {
+      "rule": "adr_non_json_line",
+      "count": 2,
+      "title": "Line is not a JSON object",
+      "hint": "Route every logger (including third-party libraries) through the JSON formatter. If the input mixes in non-log output, capture only the service's output.",
+      "doc": "docs/rules.md#adr_non_json_line",
+      "example": "§1: line is not a JSON object (plain text)"
     },
     {
       "rule": "adr_event_name",
@@ -105,6 +113,20 @@
       "rule": "adr_semconv_prefix",
       "field": "http_method",
       "message": "§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'"
+    },
+    {
+      "line": 5,
+      "event": null,
+      "rule": "adr_non_json_line",
+      "field": null,
+      "message": "§1: line is not a JSON object (plain text)"
+    },
+    {
+      "line": 6,
+      "event": null,
+      "rule": "adr_non_json_line",
+      "field": null,
+      "message": "§1: line is not a JSON object (JSON array)"
     },
     {
       "line": 7,
@@ -184,5 +206,9 @@
       "level": "information",
       "count": 1
     }
-  ]
+  ],
+  "baseline": null,
+  "baselined": 0,
+  "baseline_fixed": 0,
+  "disabled": []
 }

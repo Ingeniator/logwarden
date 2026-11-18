@@ -5,10 +5,14 @@ This project follows the logging standard checked by
 
 - Use constant snake_case `event` names and OTel semconv field names
   (`http.response.status_code`, not `status`). Log exceptions with `exc_info=True`, never
-  `error=str(e)`. Never log secrets, prompts or request/response bodies.
+  `error=str(e)`. Never log secrets, credentials, emails, prompts or request/response
+  bodies. Every line must be JSON.
+- If the project runs Ruff or golangci-lint, keep its logging rules passing (Ruff `LOG`,
+  `G`, `TRY400`; sloglint).
 - Check what the code actually logs before you finish:
   `LOGWARDEN_CAPTURE=/tmp/logs.jsonl pytest <tests>` and then
   `uvx logwarden check /tmp/logs.jsonl --json`, or use the `check_logs` MCP tool.
-- Fix findings from your own changes. Don't silence them. Project-only fields go
-  in `logwarden-fields.yaml`, but only when no semconv name exists.
+- Fix findings from your own changes. Don't silence them: don't regenerate the baseline
+  or add rules to `disable` unless asked. Project-only fields go in
+  `logwarden-fields.yaml`, but only when no semconv name exists.
 - Details: `logwarden rules <id>` and https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md.

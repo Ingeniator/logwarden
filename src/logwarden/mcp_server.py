@@ -46,6 +46,8 @@ def check_logs(path: str | None = None,
     declares project-only fields; by default the project's config or
     ./logwarden-fields.yaml is used.
 
+    The project's baseline and disabled rules apply, as for `logwarden check`.
+
     Returns ok, violations, by_rule (count, title, fix hint per rule) and
     findings (input line, event, rule, field, message).
     """
@@ -59,8 +61,8 @@ def check_logs(path: str | None = None,
             text = p.read_bytes().decode("utf-8", errors="replace")
         else:
             text = _as_jsonl(lines)
-        fields = cli.resolve_fields(fields_file, None, Path.cwd())
-        return check.run(text, fields=fields)
+        fields, policy = cli.resolve(Path.cwd(), fields=fields_file)
+        return check.run(text, fields=fields, policy=policy)
     except (cli.UsageError, check.CheckError) as e:
         return {"error": str(e)}
 

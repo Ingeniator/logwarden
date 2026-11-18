@@ -8,14 +8,15 @@ project, see `plugin/skills/logwarden/SKILL.md` and `docs/integration.md` instea
 A guardrail for structured logs, published as the PyPI package `logwarden`.
 `logwarden check` converts JSON log lines into OTel Weaver samples (`check.to_sample`), runs
 `weaver registry live-check` with the registry and Rego rules in `src/logwarden/_data/`,
-then summarises the result (`check.summarise`) with the fix hints from `rules.json`.
+then summarises the result (`check.summarise`) with the fix hints from `rules.json`, after
+applying the project's `disable` list and baseline (`check.Policy`).
 
 | Path | Role |
 |---|---|
 | `src/logwarden/cli.py` | CLI: `check`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
-| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, the result dict |
+| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), `disable` and baseline, the result dict |
 | `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256 |
-| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` |
+| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`) |
 | `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
 | `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
@@ -24,7 +25,7 @@ then summarises the result (`check.summarise`) with the fix hints from `rules.js
 | `docs/standard.md`, `docs/rules.md` | The standard and one section per rule. Copied into the wheel |
 | `plugin/`, `.claude-plugin/marketplace.json` | Claude Code plugin (skill, MCP config, `/logwarden:check`) and its marketplace |
 | `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx` |
-| `tests/golden/` | v0.2.0 output used by the parity tests. Regenerate only on purpose |
+| `tests/golden/` | Reviewed full output for the example files. Regenerate only on purpose (`make golden`), review the diff, and explain it in the release notes |
 
 ## Commands
 
@@ -46,13 +47,18 @@ Do all of these in one change:
 3. Add `## <rule_id>` to `docs/rules.md` with a failing line, a passing line and the fix.
    The MCP tool `explain_rule` reads this heading, so the format matters.
 4. Mark the rule **[checked]** in `docs/standard.md`.
-5. Add a failing line to `examples/bad.jsonl` and the rule id to
-   `test_bad_example_covers_every_rule_with_line_numbers`. Keep `examples/good.jsonl` passing.
-   Changing the examples changes the parity goldens, so regenerate them and say why in the commit.
+5. Add a failing line to `examples/bad.jsonl` and tests with passing *and* failing cases
+   (see `tests/test_new_rules.py`). Keep `examples/good.jsonl` passing. Changing the
+   examples changes the goldens: run `make golden`, review the diff, and say why in the
+   commit. `tests/test_rules_wired.py` fails if a rule lacks a `rules.json` entry, a
+   `docs/rules.md` section, a link from `docs/standard.md`, or a line in `bad.jsonl`.
 6. Add a row to the rule table in `README.md`.
 
 Rego runs per sample (one log line or one attribute), so it can't check anything across
-a run, such as "never seen". Write those in Python in `check.py`.
+a run, such as "never seen", or lines that aren't JSON objects. Write those in Python in
+`check.collect`. A Rego type error (e.g. `regex.match` on a number) aborts the whole Weaver
+run, so guard every builtin with `is_string`/`is_number`. Messages must never contain the
+logged value of a possibly sensitive field.
 
 ## Constraints
 

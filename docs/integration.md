@@ -44,7 +44,8 @@ docker compose logs --no-log-prefix --no-color myservice > logs.jsonl
 ```
 
 **Anything else:** save the service's stdout to a file, or pipe it in:
-`./run-tests 2>&1 | logwarden check -`. Lines that aren't JSON are skipped and counted.
+`./my-service 2>&1 | logwarden check -`. Every non-blank line must be a JSON object
+(`adr_non_json_line`), so capture only the service's output, not a test runner's.
 
 ## 3. Check in CI
 
@@ -52,18 +53,33 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.3.0
+- uses: Ingeniator/logwarden@v0.4.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.3.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.4.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
-**Migrating an existing service:** start with `fail: "false"`, fix the logging setup
-first (it clears `adr_missing_required` on every line at once), then the call sites. Turn
-`fail` back on when the count reaches zero.
+**Migrating an existing service:** record a baseline so CI fails only on new problems,
+then shrink it:
+
+```bash
+LOGWARDEN_CAPTURE=logs.jsonl pytest
+logwarden baseline logs.jsonl            # writes .logwarden-baseline.json
+```
+
+```toml
+[tool.logwarden]
+baseline = ".logwarden-baseline.json"     # commit it with the config
+```
+
+Fix the logging setup first (it clears `adr_missing_required` on every line at once), then
+the call sites. When `check` reports baseline entries that no longer occur, run
+`logwarden baseline` again so the file only shrinks. A finding matches its baseline entry by
+rule, field, logger and event name (numbers and ids masked), so code moving around doesn't
+break it. `fail: "false"` in the Action still works for a report-only start.
 
 ## 4. Project config and project-only fields
 
@@ -72,6 +88,14 @@ first (it clears `adr_missing_required` on every line at once), then the call si
 [tool.logwarden]
 fields = "logwarden-fields.yaml"
 ```
+
+```toml
+baseline = ".logwarden-baseline.json"             # optional, see "Migrating" above
+disable = { adr_sensitive_data = "user.email is required by the audit log (SEC-12)" }
+```
+
+`disable` switches a rule off for this project. Each rule needs a reason, and disabled
+rules are listed with their reasons in every result.
 
 `fields` lists fields only this service logs. When there's no config, `./logwarden-fields.yaml`
 is used if it exists. The template that `logwarden init` creates explains the format and

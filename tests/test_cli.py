@@ -79,8 +79,10 @@ def test_bad_example_covers_every_rule_with_line_numbers(cli, tmp_path):
     res = json.loads(cli("check", EXAMPLES / "bad.jsonl", "--json", cwd=tmp_path).stdout)
     rules = {r["rule"] for r in res["by_rule"]}
     assert {"adr_missing_required", "adr_banned_synonym", "adr_semconv_prefix", "adr_environment_value",
-            "adr_event_name", "adr_failure_context", "missing_attribute"} <= rules
+            "adr_event_name", "adr_failure_context", "missing_attribute", "adr_non_json_line",
+            "adr_sensitive_data", "adr_trace_context"} <= rules
     assert any(f["rule"] == "adr_failure_context" and f["line"] == 3 for f in res["findings"])
+    assert any(f["rule"] == "adr_non_json_line" and f["line"] == 2 for f in res["findings"])
     assert res["skipped_lines"] == 1
     assert [f["rule"] for f in res["findings"] if f["field"] == "status"] == ["adr_banned_synonym"]
     assert all(r["hint"] for r in res["by_rule"])
