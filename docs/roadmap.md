@@ -38,7 +38,7 @@ Package layout (extras keep the base install small):
 # pyproject.toml, or logwarden.toml in projects without Python
 [tool.logwarden]
 fields = "logwarden-fields.yaml"
-upstreams = "upstreams.yaml"
+upstreams = ["api.openai.com"]  # hosts whose failure path must be tested
 baseline = ".logwarden-baseline.json"
 disable = { adr_non_json_line = "reason" }   # each disabled rule needs a reason
 ```
@@ -73,7 +73,7 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - `logwarden.logging.configure(service_name=..., ...)`, the reference structlog setup
   (required fields, trace context, exceptions → semconv, redaction, noise control).
 - Test helpers: `assert_failure_logged`, `extract_error_code`, `extract_error_message`, `scrub`.
-- Upstream failure coverage: every host in `upstreams.yaml` has a failure log in the run.
+- Upstream failure coverage: every host in `upstreams` has a failure log in the run.
 
 ### M4 (v0.6.0): any language
 - Docker image for CI without Python.
