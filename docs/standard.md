@@ -127,7 +127,11 @@ A failure line must be enough to diagnose the problem without turning on debug.
   | `upstream_request_id` | the upstream's request id header |
   | `upstream_error_message` | the upstream error message, scrubbed, at most 500 chars |
 
-- Never log the raw upstream response body.
+- Never log the raw upstream response body. `logwarden.logging.extract_error_code()` and
+  `extract_error_message()` get the code and a scrubbed, truncated message from it.
+- **[checked]** when the config lists `upstreams`: every upstream has a failure line in the
+  test run, so its failure path is tested.
+  [`adr_upstream_failure_coverage`](rules.md#adr_upstream_failure_coverage)
 
 ```python
 except httpx.HTTPStatusError as e:
@@ -142,6 +146,19 @@ except httpx.HTTPStatusError as e:
 
 ## Reference Python setup (structlog)
 
+`pip install 'logwarden[structlog]'`, then once at startup:
+
+```python
+from logwarden.logging import configure
+log = configure(service_name="billing-api", service_version="1.4.2", environment="production")
+```
+
+It installs the processor chain below for structlog and for stdlib loggers, so every line,
+including third-party ones, is JSON. Third-party lines get the event `library_log` with their
+text in `log.record.original`. It also redacts secrets (`keep=` exempts required fields), sets
+chatty loggers to `WARNING` and drops health/metrics paths. Run uvicorn with
+`log_config=None`. What it does, for other setups:
+
 ```python
 shared = [
     structlog.contextvars.merge_contextvars,
@@ -151,7 +168,7 @@ shared = [
     add_service_resource,      # service.name / service.version / deployment.environment.name
     add_otel_trace_context,    # trace_id / span_id
     exception_to_semconv,      # exception.type / .message / .stacktrace
-    redact_sensitive,
+    redact_sensitive,          # [REDACTED] for secret fields and values (§8)
 ]
 # stdlib loggers: logging.Handler with structlog.stdlib.ProcessorFormatter(
 #     foreign_pre_chain=shared, processor=structlog.processors.JSONRenderer())

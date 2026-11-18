@@ -13,7 +13,7 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"fields", "baseline", "disable"}
+KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams"}
 DEFAULT_FIELDS = "logwarden-fields.yaml"
 DEFAULT_BASELINE = ".logwarden-baseline.json"
 
@@ -23,6 +23,7 @@ class Config:
     fields: str | None = None
     baseline: str | None = None
     disable: dict[str, str] = field(default_factory=dict)
+    upstreams: list[str] = field(default_factory=list)
     source: str | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)   # fatal: exit 2
@@ -52,6 +53,13 @@ def load(cwd: Path) -> Config:
             cfg.warnings.append(f"{cfg.source}: '{key}' must be a path string")
     if "disable" in data:
         _disable(data["disable"], cfg)
+    if "upstreams" in data:
+        ups = data["upstreams"]
+        if isinstance(ups, list) and all(isinstance(u, str) and u.strip() for u in ups):
+            cfg.upstreams = [u.strip() for u in ups]
+        else:
+            cfg.errors.append(f'{cfg.source}: \'upstreams\' must be a list of host names, '
+                              'e.g. upstreams = ["api.openai.com"]')
     return cfg
 
 

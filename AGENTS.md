@@ -20,6 +20,9 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
 | `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
+| `src/logwarden/logging.py` | `configure()` (the reference structlog setup) and the failure helpers; `[structlog]` extra |
+| `src/logwarden/patterns.py` | Sensitive-data patterns in Python (redaction, `scrub`); mirror of `adr_sensitive_data` |
+| `src/logwarden/testing.py` | `capture`, `assert_failure_logged`, `assert_logs_clean` |
 | `src/logwarden/pytest_plugin.py` | Capture plugin (`LOGWARDEN_CAPTURE`), registered through the `pytest11` entry point |
 | `src/logwarden/mcp_server.py` | MCP server (`logwarden mcp`, `[mcp]` extra) |
 | `docs/standard.md`, `docs/rules.md` | The standard and one section per rule. Copied into the wheel |
@@ -63,7 +66,9 @@ logged value of a possibly sensitive field.
 ## Constraints
 
 - The core install has no runtime dependencies (except `tomli` on Python 3.10). Optional
-  features go in extras (`[mcp]`).
+  features go in extras (`[mcp]`, `[structlog]`).
+- `patterns.py` and the Rego `adr_sensitive_data` rule must agree: whatever `configure()`
+  redacts must pass the rule (`test_claim2_redaction_leaves_nothing_for_the_rule`).
 - Rule ids, the `--json` keys and exit codes are a public interface for CI configs, agent
   prompts and the Action. Only add, never rename. Add a new id and keep the old one if needed.
 - Weaver 0.28 emits findings as `{id, level, message}`. `summarise` also accepts the older

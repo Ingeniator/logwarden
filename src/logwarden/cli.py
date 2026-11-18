@@ -63,7 +63,7 @@ def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None
             baseline: str | None = None, no_baseline: bool = False) -> tuple[Path | None, check.Policy]:
     """Fields file and policy (disabled rules, baseline) for a check run in `cwd`."""
     cfg = _load_config(cwd)
-    policy = check.Policy(disabled=dict(cfg.disable))
+    policy = check.Policy(disabled=dict(cfg.disable), upstreams=list(cfg.upstreams))
     chosen = None if no_baseline else (baseline or cfg.baseline)
     if chosen:
         p = Path(chosen)
@@ -104,7 +104,8 @@ def cmd_baseline(a: argparse.Namespace) -> int:
     target = Path(a.output or cfg_path or cwd / config.DEFAULT_BASELINE)
     try:
         found, _, _ = check.evaluate(text, fields=fields,
-                                     registry=Path(a.registry) if a.registry else None)
+                                     registry=Path(a.registry) if a.registry else None,
+                                     upstreams=policy.upstreams)
     except check.CheckError as e:
         raise UsageError(str(e)) from e
     content = check.make_baseline(found, policy)

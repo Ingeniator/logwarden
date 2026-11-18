@@ -93,6 +93,7 @@ deny contains make_advice("adr_event_name", "violation", {"event": ev}, msg) if 
 deny contains make_advice("adr_failure_context", "violation", {"event": ev}, msg) if {
 	input.sample.log
 	ev := input.sample.log.body
+	ev != "library_log" # third-party lines (logwarden.logging): the service can't add context
 	is_failure(input.sample.log)
 	count(failure_keys & present_keys) == 0
 	msg := sprintf("§10: '%s' is a failure line without exception.type, error.type or http.response.status_code", [ev])

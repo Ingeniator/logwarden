@@ -36,6 +36,7 @@ findings (first 20):
 | `adr_sensitive_data` | `password=...`, a JWT, an API key, `user:pass@` in a URL, an email or card number |
 | `adr_non_json_line` | a plain-text line (a library banner, a printed traceback) |
 | `adr_trace_context` | a `trace_id`/`span_id` that isn't W3C lowercase hex |
+| `adr_upstream_failure_coverage` | an upstream in `upstreams` whose failure path no test exercised |
 
 The standard is in [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md), and each rule's fix is in
 [docs/rules.md](https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md).
@@ -49,9 +50,16 @@ LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-
 logwarden check logs.jsonl                  # check them
 ```
 
+Python services can get compliant logs from one call, and test helpers for failure logs:
+
+```python
+from logwarden.logging import configure          # pip install 'logwarden[structlog]'
+log = configure(service_name="billing-api", service_version="1.4.2", environment="production")
+```
+
 ```yaml
 # CI
-- uses: Ingeniator/logwarden@v0.4.0
+- uses: Ingeniator/logwarden@v0.5.0
   with:
     logs: logs.jsonl
 ```

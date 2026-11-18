@@ -31,7 +31,8 @@ def text(result: dict, max_findings: int = 20) -> str:
     if result["violations"] > 0:
         out.append(f"\nfindings (first {min(max_findings, result['violations'])}):")
     for f in result["findings"][:max_findings]:
-        out.append(f"  line {f['line']}\t{f['rule']}\t{_first_line(f['message'])}")
+        where = f"line {f['line']}" if f["line"] is not None else "run"
+        out.append(f"  {where}\t{f['rule']}\t{_first_line(f['message'])}")
     if result["violations"] > max_findings:
         out.append("  ... use --json or -o DIR for all")
     if result["advice"]:

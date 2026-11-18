@@ -17,6 +17,41 @@ logwarden init --agent          # logwarden-fields.yaml + a logwarden section in
 Weaver, which does the actual checking, is downloaded on first run into the user cache
 directory. Set `WEAVER` to use your own binary.
 
+## Python: make compliant logs the default
+
+```bash
+uv add 'logwarden[structlog]'
+```
+
+```python
+from logwarden.logging import configure, extract_error_code, extract_error_message
+log = configure(service_name="billing-api", service_version="1.4.2", environment="production")
+
+except httpx.HTTPStatusError as e:
+    log.error("upstream_call_failed", exc_info=True,
+              upstream_error_message=extract_error_message(e.response),
+              **{"server.address": e.request.url.host,
+                 "http.response.status_code": e.response.status_code,
+                 "error.type": extract_error_code(e.response) or type(e).__name__})
+```
+
+`configure()` adds the required fields, trace context, `exception.*` fields and redaction,
+and routes third-party loggers through the same JSON formatter (run uvicorn with
+`log_config=None`). Name, version and environment can come from `OTEL_SERVICE_NAME`,
+`SERVICE_VERSION` and `DEPLOYMENT_ENVIRONMENT`. A missing value or an environment like `dev`
+raises at startup.
+
+In tests, `logwarden.testing` checks the log lines a test produces:
+
+```python
+from logwarden.testing import capture, assert_failure_logged, assert_logs_clean
+
+with capture() as logs:
+    client.post("/chat")                       # the upstream is mocked to time out
+assert_failure_logged(logs, "upstream_call_failed", **{"server.address": "api.openai.com"})
+assert_logs_clean(logs)                        # the full logwarden check on these lines
+```
+
 ## 2. Capture the logs your code produces
 
 logwarden checks real output, so the project needs a run that produces logs: tests,
@@ -53,13 +88,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.4.0
+- uses: Ingeniator/logwarden@v0.5.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.4.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.5.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -93,6 +128,13 @@ fields = "logwarden-fields.yaml"
 baseline = ".logwarden-baseline.json"             # optional, see "Migrating" above
 disable = { adr_sensitive_data = "user.email is required by the audit log (SEC-12)" }
 ```
+
+```toml
+upstreams = ["api.openai.com", "api.anthropic.com"]   # each needs a failure test
+```
+
+`upstreams` lists the hosts the service calls. `check` fails when a test run has no failure
+line for one of them (`adr_upstream_failure_coverage`).
 
 `disable` switches a rule off for this project. Each rule needs a reason, and disabled
 rules are listed with their reasons in every result.

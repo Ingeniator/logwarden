@@ -12,7 +12,7 @@
       "name": "logwarden",
       "source": "./plugin",
       "description": "Check that the code you write produces good structured logs (OTel semconv names, required fields, debuggable failures).",
-      "version": "0.4.0"
+      "version": "0.5.0"
     }
   ]
 }

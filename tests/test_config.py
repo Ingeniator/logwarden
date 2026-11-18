@@ -23,8 +23,8 @@ def test_logwarden_toml_wins(tmp_path):
 
 
 def test_unknown_key_warns(tmp_path):
-    (tmp_path / "logwarden.toml").write_text('fields = "a.yaml"\nupstreams = "x"\n')
-    assert any("unknown key 'upstreams'" in w for w in config.load(tmp_path).warnings)
+    (tmp_path / "logwarden.toml").write_text('fields = "a.yaml"\nnot_a_setting = "x"\n')
+    assert any("unknown key 'not_a_setting'" in w for w in config.load(tmp_path).warnings)
 
 
 def test_no_config(tmp_path):

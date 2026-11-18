@@ -53,6 +53,12 @@
     "hint": "Take trace_id and span_id from the active OTel span: format(ctx.trace_id, \"032x\") and format(ctx.span_id, \"016x\"); omit both when no span is active.",
     "doc": "docs/rules.md#adr_trace_context"
   },
+  "adr_upstream_failure_coverage": {
+    "section": "§10",
+    "title": "Upstream failure path not exercised",
+    "hint": "Add a test where a call to this upstream fails (timeout, 4xx/5xx) so the run contains its failure line with server.address set, or remove it from upstreams.",
+    "doc": "docs/rules.md#adr_upstream_failure_coverage"
+  },
   "missing_attribute": {
     "section": "§2",
     "title": "Unknown field",

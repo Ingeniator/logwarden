@@ -29,7 +29,13 @@ Your job is to make sure the code you write produces logs that pass.
 - If the project uses Ruff or golangci-lint, run it too; the recommended logging rules
   (Ruff `LOG`, `G`, `TRY400`; sloglint) are in docs/integration.md §6 of the logwarden repo.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
-  logging setup, never from call sites.
+  logging setup, never from call sites. In a Python service without a compliant setup,
+  suggest `logwarden.logging.configure(...)` (`logwarden[structlog]`); in one that already
+  uses it, don't add a second setup.
+- For failed upstream calls, use `extract_error_code(response)` and
+  `extract_error_message(response)` from `logwarden.logging` instead of logging the body.
+- When you add an upstream call, add a test where it fails and assert the failure line with
+  `logwarden.testing.assert_failure_logged`.
 
 Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
 

@@ -82,6 +82,9 @@ log.warning("quota_low", **{"error.type": "quota"})   # ✅ no exception involve
 For HTTP failures, add `http.response.status_code`. If the line isn't a failure, lower its
 level.
 
+Lines with the event `library_log` (third-party library output, as written by
+`logwarden.logging.configure()`) are exempt: the service can't add context to them.
+
 ## adr_sensitive_data
 
 A field holds a secret or personal data (§8). Two checks:
@@ -134,6 +137,19 @@ event_dict["trace_id"] = format(ctx.trace_id, "032x")   # ✅
 
 **Fix:** take both from the active OTel span (see the reference setup in the standard) and
 leave them out when no span is active, instead of logging zeros.
+
+## adr_upstream_failure_coverage
+
+Runs only when the config lists upstreams: `upstreams = ["api.openai.com", ...]`. Fails when
+the run has no failure line for an upstream: no `warning`/`error` line (or `*_failed` event)
+with `server.address` equal to that host. Then no test exercised what happens when that
+upstream fails, and nobody knows whether the failure log is any use (§10). The finding is
+about the whole run, so its `line` is `null` (`run` in text output).
+
+**Fix:** add a test where a call to the upstream fails (timeout, 429, 5xx) and the code logs
+it with `server.address`, `http.response.status_code` or `error.type` (see §10). Remove hosts
+the service no longer calls. `logwarden.testing.assert_failure_logged` checks the line in
+the test itself.
 
 ## missing_attribute
 

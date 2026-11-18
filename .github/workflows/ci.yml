@@ -65,6 +65,16 @@ jobs:
           cd /tmp/t && LOGWARDEN_CAPTURE=/tmp/t/logs.jsonl /tmp/v/bin/python -m pytest -q
           grep -q x_done /tmp/t/logs.jsonl
           /tmp/v/bin/logwarden check "$GITHUB_WORKSPACE/examples/good.jsonl"
+      - name: Core wheel has no structlog; logwarden.logging names the extra
+        run: |
+          if /tmp/v/bin/python -c "import structlog" 2>/dev/null; then echo "structlog in core install"; exit 1; fi
+          /tmp/v/bin/python -c "import logwarden.logging" 2>&1 | tee /tmp/err.txt || true
+          grep -q "logwarden\[structlog\]" /tmp/err.txt
+      - name: "[structlog] extra works in a clean venv"
+        run: |
+          uv venv /tmp/s && uv pip install --python /tmp/s/bin/python "$(ls dist/*.whl)[structlog]"
+          /tmp/s/bin/python -c "from logwarden.logging import configure; configure('s','1','test').info('extra_works')" | tee /tmp/s.jsonl
+          grep -q '"event": "extra_works"' /tmp/s.jsonl
 
   plugin:
     runs-on: ubuntu-latest

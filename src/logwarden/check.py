@@ -21,6 +21,7 @@ _SEVERITY = {"debug": 5, "info": 9, "warning": 13, "warn": 13, "error": 17, "cri
 _RECORD_KEYS = {"timestamp", "level", "event", "trace_id", "span_id"}
 _NAMING_RULES = {"adr_banned_synonym", "adr_semconv_prefix"}
 NON_JSON = "adr_non_json_line"
+UPSTREAM = "adr_upstream_failure_coverage"
 BASELINE_FORMAT = 1
 
 
@@ -147,6 +148,7 @@ class Policy:
     disabled: dict[str, str] = field(default_factory=dict)
     baseline: dict | None = None
     baseline_path: str | None = None
+    upstreams: list[str] = field(default_factory=list)
 
 
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -173,8 +175,25 @@ def a_id(a: dict) -> str | None:
     return a.get("id") or a.get("advice_type")
 
 
-def collect(live_check: dict, records: list[Record], bad: list[BadLine]) -> list[dict]:
-    """Every finding: Weaver's (per sample) plus logwarden's own line rules."""
+def _is_failure(obj: dict) -> bool:
+    level = str(obj.get("level") or "").lower()
+    event = obj.get("event")
+    return _SEVERITY.get(level, 9) >= 13 or (isinstance(event, str) and event.endswith("_failed"))
+
+
+def upstream_findings(records: list[Record], upstreams: list[str]) -> list[dict]:
+    """§10: every listed upstream has a failure line in the run (whole-run rule, line None)."""
+    covered = {r.obj.get("server.address") for r in records if _is_failure(r.obj)}
+    return [{"rule": UPSTREAM, "level": "violation", "field": "server.address",
+             "message": f"§10: no failure log for upstream '{host}' in this run; add a test where "
+                        "a call to it fails and check the failure line",
+             "line": None, "event": None, "logger": "", "fp_event": host, "renames": False}
+            for host in upstreams if host not in covered]
+
+
+def collect(live_check: dict, records: list[Record], bad: list[BadLine],
+            upstreams: list[str] | None = None) -> list[dict]:
+    """Every finding: Weaver's (per sample) plus logwarden's own line and run rules."""
     found = []
     for i, sample in enumerate(live_check.get("samples") or []):
         log = sample.get("log") or {}
@@ -215,7 +234,7 @@ def collect(live_check: dict, records: list[Record], bad: list[BadLine]) -> list
                       "message": f"§1: line is not a JSON object ({b.kind})",
                       "line": b.line, "event": None, "logger": "", "fp_event": f"line:{digest}"})
     found.sort(key=lambda f: f["line"])
-    return found
+    return found + upstream_findings(records, upstreams or [])
 
 
 def violations_of(found: list[dict]) -> list[dict]:
@@ -311,7 +330,22 @@ def load_baseline(path: Path) -> dict:
     return content
 
 
-def _fields_registry(fields: Path, into: Path) -> Path:
+def base_registry(into: Path) -> Path:
+    """logwarden's registry with the semconv dependency pointing at a local cached copy."""
+    src = data.path("registry")
+    manifest = src / "manifest.yaml"
+    model = weaver.semconv_model(weaver.semconv_version(manifest))
+    into.mkdir(parents=True, exist_ok=True)
+    for f in src.iterdir():
+        if f.is_file() and f.name != "manifest.yaml":
+            (into / f.name).write_bytes(f.read_bytes())
+    text = re.sub(r"(registry_path:\s*)\S+", lambda m: m.group(1) + model.as_posix(),
+                  manifest.read_text(encoding="utf-8"), count=1)
+    (into / "manifest.yaml").write_text(text, encoding="utf-8")
+    return into
+
+
+def _fields_registry(fields: Path, into: Path, base: Path) -> Path:
     into.mkdir(parents=True, exist_ok=True)
     (into / "fields.yaml").write_bytes(fields.read_bytes())
     (into / "manifest.yaml").write_text(
@@ -321,14 +355,14 @@ def _fields_registry(fields: Path, into: Path) -> Path:
         "schema_url: https://logwarden.invalid/project/0.0.0\n"
         "dependencies:\n"
         "  - schema_url: https://github.com/Ingeniator/logwarden/schemas/0.1.0\n"
-        f"    registry_path: {data.path('registry').as_posix()}\n",
+        f"    registry_path: {base.as_posix()}\n",
         encoding="utf-8",
     )
     return into
 
 
 def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = None,
-             out: Path | None = None) -> tuple[list[dict], int, int]:
+             out: Path | None = None, upstreams: list[str] | None = None) -> tuple[list[dict], int, int]:
     """Run Weaver on log text: (all findings, JSON records, total lines). Raises CheckError."""
     if fields and registry:
         raise CheckError("use fields or registry, not both")
@@ -343,14 +377,18 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
     with tempfile.TemporaryDirectory(prefix="logwarden-") as tmp:
         work = out or Path(tmp)
         work.mkdir(parents=True, exist_ok=True)
-        if fields:
-            registry = _fields_registry(fields, Path(tmp) / "registry")
+        if not registry:
+            try:
+                base = base_registry(Path(tmp) / "base")
+            except weaver.WeaverError as e:
+                raise CheckError(str(e)) from e
+            registry = _fields_registry(fields, Path(tmp) / "registry", base) if fields else base
         samples = work / "samples.json"
         samples.write_text(json.dumps([to_sample(r.obj) for r in records], ensure_ascii=False),
                            encoding="utf-8")
         proc = subprocess.run(
             [binary, "registry", "live-check",
-             "--registry", str(registry or data.path("registry")),
+             "--registry", str(registry),
              "--include-unreferenced",
              "--config", str(data.path("weaver.toml")),
              "--advice-policies", str(data.path("policies")),
@@ -368,14 +406,16 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
             errors = [ln for ln in log.splitlines() if "×" in ln or "rror" in ln]
             raise CheckError("weaver produced no report (registry or fields file invalid?)\n"
                              + "\n".join(errors or log.splitlines()[-20:]))
-        found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad)
+        found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad, upstreams)
     return found, len(records), total
 
 
 def run(text: str, *, fields: Path | None = None, registry: Path | None = None,
         out: Path | None = None, policy: Policy | None = None) -> dict:
     """Check log text. Raises CheckError on setup problems."""
-    found, n_records, total = evaluate(text, fields=fields, registry=registry, out=out)
+    policy = policy or Policy()
+    found, n_records, total = evaluate(text, fields=fields, registry=registry, out=out,
+                                       upstreams=policy.upstreams)
     result = summarise(found, n_records, total, policy)
     if out:
         (out / "result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False),
