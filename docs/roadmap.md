@@ -40,7 +40,7 @@ Package layout (extras keep the base install small):
 fields = "logwarden-fields.yaml"
 upstreams = "upstreams.yaml"
 baseline = ".logwarden-baseline.json"
-disable = []            # rule ids; each needs a reason comment
+disable = { adr_non_json_line = "reason" }   # each disabled rule needs a reason
 ```
 
 1. `uv add --dev logwarden`, or `uvx logwarden` with no install
