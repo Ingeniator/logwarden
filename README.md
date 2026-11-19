@@ -1,26 +1,199 @@
 # logwarden
 
-A guardrail for logs. logwarden reads the JSON logs your service actually writes and flags
-every line that would make debugging harder: ad-hoc field names, missing service info,
-free-text events, and errors that don't say what failed. It exits with code 1 on
-problems, so CI and AI agents can use it the way they use tests.
+**Tests for your logs.** logwarden checks the logs your services actually write against one
+logging standard, built on OpenTelemetry semantic conventions. It fails CI on a bad line the
+way a test fails on a bug, so logs stay searchable, safe and useful when something breaks.
 
-It checks output, so it works for any language: JSON lines from a file or stdin, or logs sent
-over OTLP by any OpenTelemetry SDK. `logwarden lint-code` checks source code too. Field names follow
-[OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/),
-the names traces and metrics already use, so logs, traces and metrics can be queried together.
+[![PyPI](https://img.shields.io/pypi/v/logwarden)](https://pypi.org/project/logwarden/)
+[![Python](https://img.shields.io/pypi/pyversions/logwarden)](https://pypi.org/project/logwarden/)
+[![CI](https://github.com/Ingeniator/logwarden/actions/workflows/ci.yml/badge.svg)](https://github.com/Ingeniator/logwarden/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Ingeniator/logwarden/blob/main/LICENSE)
+
+```bash
+uvx logwarden check logs.jsonl      # any language: it reads JSON lines, a file or stdin
+```
+
+## Why
+
+Logs get written by many people, in many services, and then mostly read during an incident.
+Code review rarely catches a bad log line, because reviewers see the code, not what it writes.
+So the same problems turn up in almost every codebase:
+
+- **Every service names things differently.** It's `status`, `statusCode`, `http_status` or
+  `response.code`, so a query or a dashboard works for one service and silently misses the
+  others.
+- **Event names hold data.** `"Loaded 3 models"` and `"Loaded 4 models"` are different events,
+  so you can't count them, alert on them or group by them.
+- **Errors don't say what failed.** `upstream_call_failed` with no exception type, error type
+  or status code means reproducing the bug just to read its cause.
+- **Secrets and personal data leak.** A `password` field, a JWT, an API key or a customer's
+  email ends up in the log store, where far more people can read it.
+- **Logs can't be joined with traces and metrics,** because their field names don't match
+  the ones OpenTelemetry uses everywhere else.
+
+logwarden makes these problems fail the build. It checks **output, not code**, so it sees what
+your logging setup, middleware and third-party libraries really produce, in any language.
+
+## What a check looks like
+
+This line looks normal:
+
+```json
+{"timestamp":"2026-11-14T10:00:00Z","level":"info","event":"Loaded 3 models","logger":"x","status":200,"http_route":"/a","service.name":"yallmp","deployment.environment.name":"dev"}
+```
+
+logwarden finds five problems in it, each with the fix:
 
 ```
-$ uvx logwarden check logs.jsonl
-logwarden: 573 records, 2843 violations
+$ logwarden check logs.jsonl
+  1	adr_banned_synonym - Banned synonym for an OTel semconv field
+	fix: Rename the field to the semconv name given in the message.
+	e.g. §2: 'status' is a banned synonym; use http.response.status_code
 
-  539	adr_event_name - Event is a constant snake_case name
-	fix: Use a fixed name like import_completed and move variable data into fields
+  1	adr_event_name - Event is a constant snake_case name
+	fix: Use a fixed name like import_completed and move variable data into fields: log.info("import_completed", rows_imported=n).
 	e.g. §4: event 'Loaded 3 models' must be a constant snake_case name
 
-findings (first 20):
-  line 1	adr_event_name	§4: event 'Loaded 3 models' must be a constant snake_case name
+  1	adr_semconv_prefix - Semconv name written with underscores
+	e.g. §2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'
+  ...
 ```
+
+The fixed line, which passes:
+
+```json
+{"timestamp":"2026-11-14T10:00:00Z","level":"info","event":"models_loaded","logger":"app.models","http.response.status_code":200,"http.route":"/a","service.name":"yallmp","service.version":"0.1.0","deployment.environment.name":"development"}
+```
+
+The exit code is 0 when the logs pass, 1 when they have violations and 2 on a usage error, so
+CI, scripts and AI agents can rely on it.
+
+## What you get
+
+- **One vocabulary across services.** Field names come from the
+  [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/),
+  the same names your traces and metrics use. Queries, dashboards and alerts written once work
+  for every service.
+- **Every failure can be diagnosed from its log line.** Error lines must say what failed, and
+  logwarden can check that each upstream's failure path is exercised by a test.
+- **No secrets in the log store.** Secret field names and value patterns (JWTs, API keys,
+  credentials in URLs, emails, card numbers) fail the check. The Python setup redacts them
+  before they're written.
+- **Adoption without a big bang.** A baseline records today's findings, so CI fails only on
+  new ones while you fix the old ones.
+- **Reviewable changes to logging.** A PR comment shows the new and fixed findings compared
+  with the base branch, and which event names a change adds or removes.
+- **AI agents that log well.** A Claude Code plugin, an MCP server and an `AGENTS.md` section
+  teach coding agents the standard and let them check their own work.
+
+## Use cases
+
+### 1. Gate pull requests in CI
+
+Run the tests with log capture, then let the GitHub Action check the logs. On a pull request
+it compares the run with the base branch, posts one comment that it updates on each push,
+and uploads an HTML report.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write          # only for comment: "true"
+steps:
+  - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
+  - uses: Ingeniator/logwarden@v0.7.0
+    with:
+      logs: logs.jsonl
+      comment: "true"
+```
+
+GitLab and other CI systems run the same CLI with `--snapshot`, `--compare`, `--markdown` and
+`--html`; see [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md).
+
+### 2. Adopt it on an existing service
+
+```bash
+logwarden baseline logs.jsonl       # record today's findings in .logwarden-baseline.json
+logwarden check logs.jsonl          # from now on, fail only on new findings
+```
+
+Domain fields with no semconv name go in `logwarden-fields.yaml`. A rule you can't follow yet
+can be disabled in config, but only with a written reason.
+
+### 3. Any language, any stack
+
+logwarden checks output, so the language doesn't matter.
+
+```bash
+logwarden capture -o logs.jsonl -- npm test    # receive OTLP logs from any OTel SDK while the command runs
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.7.0 check logs.jsonl   # no Python needed
+```
+
+There are setup recipes, with example output that passes, for
+[Node (pino)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/node.md),
+[Go (slog)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/go.md) and
+[Java (logback)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/java.md).
+
+### 4. Make good logs the default in Python
+
+One call sets up structlog and the standard library so that every line passes: required
+service fields, trace context, exceptions as semconv fields, redaction and quiet noisy
+libraries.
+
+```python
+from logwarden.logging import configure          # pip install 'logwarden[structlog]'
+log = configure(service_name="billing-api", service_version="1.4.2", environment="production")
+log.info("invoice_sent", **{"invoice.id": inv.id})
+```
+
+The pytest plugin captures logs from any test run (`LOGWARDEN_CAPTURE=logs.jsonl pytest`), and
+`logwarden.testing` provides `assert_failure_logged` and `assert_logs_clean` for asserting
+on logs in tests.
+
+### 5. Review what a change does to the logs
+
+```bash
+logwarden check logs.jsonl --snapshot base.json          # on main
+logwarden check logs.jsonl --compare base.json --html report.html   # on a branch: new and fixed
+logwarden catalog logs.jsonl -o logwarden-events.toml    # the events a service emits, to commit
+```
+
+With an event catalog configured, `check` reports any event that isn't in it, so dashboards and
+alerts that match on event names don't break without anyone noticing.
+
+### 6. Catch problems before anything runs
+
+```bash
+logwarden lint-code src/
+```
+
+This runs logwarden's Semgrep rules for Python, JavaScript/TypeScript, Go and Java: formatted
+event names, secret and banned field names, and `print` instead of the logger. Ruff (`LOG`,
+`G`, `TRY400`) and sloglint cover more in an existing lint setup; the recommended config is in
+[docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
+
+### 7. Keep AI coding agents in line
+
+- **Claude Code:** `/plugin marketplace add Ingeniator/logwarden`, then
+  `/plugin install logwarden@logwarden`. This adds a skill for writing good logs, the MCP
+  server and `/logwarden:check`.
+- **Other agents:** `logwarden init --agent` adds a logwarden section to `AGENTS.md`. The MCP
+  server (`uvx --from 'logwarden[mcp]' logwarden mcp`) provides `check_logs`, `explain_rule`,
+  `list_rules` and `get_standard`.
+- **Machine output:** `logwarden check --json` gives each finding's line, rule and fix hint.
+
+## Quick start
+
+```bash
+uv add --dev logwarden                      # or: pipx install logwarden / uvx logwarden
+logwarden init --agent                      # fields file + AGENTS.md section
+LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-registered)
+logwarden check logs.jsonl                  # check them
+```
+
+Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
+[docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md)
+covers capturing logs from any stack, project-only fields, the baseline, the event catalog and
+migrating a legacy service.
 
 ## What it checks
 
@@ -40,88 +213,52 @@ findings (first 20):
 | `adr_upstream_failure_coverage` | an upstream in `upstreams` whose failure path no test exercised |
 | `adr_event_catalog` | an event missing from the event catalog, when `events` is configured |
 
-The standard is in [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md), and each rule's fix is in
+The standard, with the reasoning behind each rule, is in
+[docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md). Each
+rule's failing and passing examples and its fix are in
 [docs/rules.md](https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md).
 
-## Use it in a project
+## How it compares
 
-```bash
-uv add --dev logwarden                      # or: pipx install logwarden / uvx logwarden
-logwarden init --agent                      # fields file + AGENTS.md section
-LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-registered)
-logwarden check logs.jsonl                  # check them
-```
+| | Checks | When |
+|---|---|---|
+| Logger linters (Ruff `LOG`/`G`, sloglint) | how the logger is called in source | before running |
+| Schema checks in the log pipeline | records arriving in the log store | in production, after the fact |
+| **logwarden** | the lines services really write, including their setup, middleware and libraries | in tests and CI, before merge |
 
-Other languages and Docker:
-
-```bash
-logwarden capture -o logs.jsonl -- npm test   # receive logs over OTLP while the command runs, then check
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.7.0 check logs.jsonl   # no Python needed
-```
-
-Setup recipes whose output passes: [Node (pino)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/node.md),
-[Go (slog)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/go.md),
-[Java (logback)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/java.md).
-
-Python services can get compliant logs from one call, and test helpers for failure logs:
-
-```python
-from logwarden.logging import configure          # pip install 'logwarden[structlog]'
-log = configure(service_name="billing-api", service_version="1.4.2", environment="production")
-```
-
-```yaml
-# CI: on pull requests, compares with the base branch and comments new/fixed counts
-- uses: Ingeniator/logwarden@v0.7.0
-  with:
-    logs: logs.jsonl
-    comment: "true"             # needs permissions: pull-requests: write
-```
-
-Reviewing a change: `check --compare base.json` lists new and fixed findings against a
-snapshot of the base branch (`check --snapshot`), `--html` writes a self-contained report
-and `--markdown` a PR-comment summary. `logwarden catalog logs.jsonl` lists the events a
-service logs; commit them as `logwarden-events.toml` and `check` reports events that
-aren't in it.
-
-Also lint the source: `logwarden lint-code src/` runs logwarden's Semgrep rules (Python,
-JavaScript/TypeScript, Go, Java) for formatted event names, secret and banned field names, and
-`print` instead of the logger. Ruff `LOG`, `G` and `TRY400` rules for Python, and sloglint for Go,
-cover more cases in an existing lint setup. The recommended config is in
-[docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
-
-Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
-On an existing service, `logwarden baseline logs.jsonl` records today's findings so CI
-fails only on new ones.
-See [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md) for capturing logs from any stack,
-project-only fields and migrating a legacy service.
-
-## For AI agents
-
-- **Claude Code:** `/plugin marketplace add Ingeniator/logwarden`, then
-  `/plugin install logwarden@logwarden`. This gives a skill for writing good logs, the MCP
-  server and `/logwarden:check`.
-- **Other agents:** `logwarden init --agent` adds a logwarden section to `AGENTS.md`. The MCP
-  server runs with `uvx --from 'logwarden[mcp]' logwarden mcp` and provides `check_logs`,
-  `explain_rule`, `list_rules` and `get_standard`.
-- **Machine output:** `logwarden check --json` gives each finding's line number, rule and
-  fix hint.
-- **Agents working on this repo:** read [AGENTS.md](https://github.com/Ingeniator/logwarden/blob/main/AGENTS.md).
+These tools complement each other: logwarden's `lint-code` and its recommended Ruff and
+sloglint config cover the source side.
 
 ## How it works
 
 Each log line becomes a sample for [OTel Weaver](https://github.com/open-telemetry/weaver)
-`registry live-check`. Weaver checks the sample's field names against the semconv
-registry (plus logwarden's shared fields and the project's `logwarden-fields.yaml`) and
-runs the rules in `src/logwarden/_data/policies/logwarden.rego`. `logwarden capture` turns
-OTLP log records into the same JSON lines first. Python 3.10+ on Linux, macOS or Windows, or
-the Docker image (linux/amd64, linux/arm64). Weaver and the semantic conventions are
-downloaded on first use, checked against pinned SHA-256 sums and cached.
+`registry live-check`. Weaver checks the field names against the semconv registry, plus
+logwarden's shared fields and the project's `logwarden-fields.yaml`, and runs logwarden's
+rules, written in Rego. Checks that span a whole run, such as upstream coverage and the event
+catalog, run in Python. `logwarden capture` turns OTLP log records into the same JSON lines
+first.
+
+Requirements: Python 3.10+ on Linux, macOS or Windows, or the Docker image (linux/amd64 and
+linux/arm64), which works offline. Weaver and the semantic conventions are downloaded on first
+use, checked against pinned SHA-256 sums and cached. The core package has no dependencies
+besides `tomli` on Python 3.10.
+
+**Stability.** Rule ids, the `--json` keys and exit codes are a public interface: they are only
+ever added to, never renamed. Every release has notes with a verification table, written
+before the work and filled in before the tag
+([CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md)).
 
 ## Roadmap
 
-See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md). Release notes are in
-[CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md).
+Next: findings shown on the source line in the PR diff (SARIF), checking Kibana and
+Elasticsearch exports, and a continuous check of the live log stream from Kafka and Fluent
+Bit. See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md).
+
+## Contributing
+
+Issues and pull requests are welcome. [AGENTS.md](https://github.com/Ingeniator/logwarden/blob/main/AGENTS.md)
+describes the layout, the rules for adding a rule and the release process. It is written for
+humans and AI agents alike.
 
 ## License
 
