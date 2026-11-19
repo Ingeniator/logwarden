@@ -27,9 +27,9 @@ def _rules(items):
 
 
 def _snap(cli, cwd, name, *lines):
-    (cwd / f"{name}.jsonl").write_text("\n".join(lines) + "\n")
+    (cwd / f"{name}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     cli("check", f"{name}.jsonl", "--snapshot", f"{name}.json", cwd=cwd)
-    return json.loads((cwd / f"{name}.json").read_text())
+    return json.loads((cwd / f"{name}.json").read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------- claim 1
@@ -40,7 +40,7 @@ def test_claim1_new_fixed_unchanged(cli, tmp_path):
     assert base["kind"] == "snapshot" and base["events"] == {"a_done": 1, "ok_done": 1, "Bad Name": 1}
     assert _rules(base["entries"]) == ["adr_banned_synonym", "adr_event_name"]
     # B moves from line 3 to line 1: still the same finding, not new.
-    (tmp_path / "run.jsonl").write_text("\n".join([B, OK, C, C]) + "\n")
+    (tmp_path / "run.jsonl").write_text("\n".join([B, OK, C, C]) + "\n", encoding="utf-8")
     r = cli("check", "run.jsonl", "--compare", "base.json", "--json", cwd=tmp_path)
     c = json.loads(r.stdout)["compare"]
     assert (c["new"], c["fixed"], c["unchanged"]) == (1, 1, 1)
@@ -62,8 +62,8 @@ def test_claim1_new_fixed_unchanged(cli, tmp_path):
 @pytest.mark.weaver
 def test_claim1_disable_and_baseline_file(cli, tmp_path):
     _snap(cli, tmp_path, "base", A)
-    (tmp_path / "run.jsonl").write_text(B + "\n")
-    (tmp_path / "logwarden.toml").write_text('disable = { adr_event_name = "test" }\n')
+    (tmp_path / "run.jsonl").write_text(B + "\n", encoding="utf-8")
+    (tmp_path / "logwarden.toml").write_text('disable = { adr_event_name = "test" }\n', encoding="utf-8")
     c = json.loads(cli("check", "run.jsonl", "--compare", "base.json", "--json", cwd=tmp_path).stdout)["compare"]
     assert (c["new"], c["fixed"]) == (0, 1)
     (tmp_path / "logwarden.toml").unlink()
@@ -78,7 +78,7 @@ def test_claim1_disable_and_baseline_file(cli, tmp_path):
                                      '{"format": 1, "entries": [], "events": [1]}'])
 def test_claim1_bad_compare_file(cli, tmp_path, content):
     if content is not None:
-        (tmp_path / "base.json").write_text(content)
+        (tmp_path / "base.json").write_text(content, encoding="utf-8")
     r = cli("check", "-", "--compare", "base.json", stdin=OK + "\n", cwd=tmp_path)
     assert r.returncode == 2 and "--compare" in r.stderr, r.stderr
 
@@ -104,10 +104,10 @@ def _parse(page):
 
 @pytest.mark.weaver
 def test_claim2_html_report(cli, tmp_path):
-    golden = json.loads((GOLDEN / "bad.json").read_text())
+    golden = json.loads((GOLDEN / "bad.json").read_text(encoding="utf-8"))
     r = cli("check", EXAMPLES / "bad.jsonl", "--html", "r.html", cwd=tmp_path)
     assert r.returncode == 1
-    page = (tmp_path / "r.html").read_text()
+    page = (tmp_path / "r.html").read_text(encoding="utf-8")
     p = _parse(page)
     assert "script" not in p.tags and "link" not in p.tags and "img" not in p.tags
     assert p.urls and all(u.startswith("https://github.com/Ingeniator/logwarden/blob/") for u in p.urls)
@@ -122,14 +122,14 @@ def test_claim2_html_report(cli, tmp_path):
 def test_claim2_escaping_and_compare_section(cli, tmp_path):
     _snap(cli, tmp_path, "base", OK)
     evil = _line("<script>alert(1)</script>", **{"x<b>": "<img src=x onerror=alert(1)>"})
-    (tmp_path / "run.jsonl").write_text(evil + "\n")
+    (tmp_path / "run.jsonl").write_text(evil + "\n", encoding="utf-8")
     cli("check", "run.jsonl", "--compare", "base.json", "--html", "r.html", "--markdown", "r.md", cwd=tmp_path)
-    page = (tmp_path / "r.html").read_text()
+    page = (tmp_path / "r.html").read_text(encoding="utf-8")
     p = _parse(page)
     assert "script" not in p.tags and "img" not in p.tags
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page and "<code>x&lt;b&gt;</code>" in page
     assert "Compared with the base" in page
-    md = (tmp_path / "r.md").read_text()
+    md = (tmp_path / "r.md").read_text(encoding="utf-8")
     assert "<script>" not in md and "<img" not in md and "&lt;script&gt;" in md
 
 
@@ -138,7 +138,7 @@ def test_claim2_o_dir_writes_reports(cli, tmp_path):
     cli("check", EXAMPLES / "good.jsonl", "-o", "out", cwd=tmp_path)
     for name in ("report.html", "report.md", "snapshot.json", "result.json"):
         assert (tmp_path / "out" / name).is_file(), name
-    assert json.loads((tmp_path / "out/snapshot.json").read_text())["kind"] == "snapshot"
+    assert json.loads((tmp_path / "out/snapshot.json").read_text(encoding="utf-8"))["kind"] == "snapshot"
 
 
 # ---------------------------------------------------------------- claim 3
@@ -151,8 +151,8 @@ def _normalise(md):
 def test_claim3_markdown_golden(cli, tmp_path):
     cli("check", EXAMPLES / "good.jsonl", "--snapshot", "base.json", cwd=tmp_path)
     cli("check", EXAMPLES / "bad.jsonl", "--compare", "base.json", "--markdown", "r.md", cwd=tmp_path)
-    got = _normalise((tmp_path / "r.md").read_text())
-    assert got == _normalise((GOLDEN / "bad-vs-good.md").read_text())
+    got = _normalise((tmp_path / "r.md").read_text(encoding="utf-8"))
+    assert got == _normalise((GOLDEN / "bad-vs-good.md").read_text(encoding="utf-8"))
 
 
 def test_claim3_markdown_fits_a_comment():
@@ -198,7 +198,7 @@ def test_claim5_catalog_lists_events(cli, tmp_path):
 def test_claim5_catalog_file_merges(cli, tmp_path):
     r = cli("catalog", EXAMPLES / "good.jsonl", "-o", "ev.toml", cwd=tmp_path)
     assert r.returncode == 0 and "2 events, 2 new" in r.stdout
-    cat = tomllib.loads((tmp_path / "ev.toml").read_text())["events"]
+    cat = tomllib.loads((tmp_path / "ev.toml").read_text(encoding="utf-8"))["events"]
     assert cat == {"billing_sync_complete": {"description": "", "levels": ["info"]},
                    "upstream_call_failed": {"description": "", "levels": ["error"]}}
     # Hand edits: a description, an extra key, an event no run produced.
@@ -209,7 +209,7 @@ def test_claim5_catalog_file_merges(cli, tmp_path):
         _line("billing_sync_complete", level="warning"), _line('odd "name".x')]) + "\n")
     r = cli("catalog", "new.jsonl", "-o", "ev.toml", cwd=tmp_path)
     assert "3 events, 1 new" in r.stdout
-    cat = tomllib.loads((tmp_path / "ev.toml").read_text())["events"]
+    cat = tomllib.loads((tmp_path / "ev.toml").read_text(encoding="utf-8"))["events"]
     assert cat["billing_sync_complete"] == {"description": "Billing synced.", "levels": ["info", "warning"],
                                             "owner": "billing"}
     assert cat["rare_path_taken"]["description"] == "Only on Sundays."
@@ -217,7 +217,7 @@ def test_claim5_catalog_file_merges(cli, tmp_path):
 
 
 def test_claim5_broken_catalog_file(cli, tmp_path):
-    (tmp_path / "ev.toml").write_text("[events\n")
+    (tmp_path / "ev.toml").write_text("[events\n", encoding="utf-8")
     r = cli("catalog", EXAMPLES / "good.jsonl", "-o", "ev.toml", cwd=tmp_path)
     assert r.returncode == 2 and "not valid TOML" in r.stderr
 
@@ -229,11 +229,11 @@ CAT = '[events.ok_done]\ndescription = "ok"\n[events.a_done]\ndescription = "a"\
 
 @pytest.mark.weaver
 def test_claim6_event_not_in_catalog(cli, tmp_path):
-    (tmp_path / "ev.toml").write_text(CAT)
+    (tmp_path / "ev.toml").write_text(CAT, encoding="utf-8")
     text = "\n".join([OK, _line("new_thing_done"), _line("Not Snake")]) + "\n"
     assert all(f["rule"] != "adr_event_catalog"     # no config: the rule doesn't run
                for f in json.loads(cli("check", "-", "--json", stdin=text, cwd=tmp_path).stdout)["findings"])
-    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\n')
+    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\n', encoding="utf-8")
     r = cli("check", "-", "--json", stdin=text, cwd=tmp_path)
     found = [f for f in json.loads(r.stdout)["findings"] if f["rule"] == "adr_event_catalog"]
     assert r.returncode == 1 and len(found) == 1           # "Not Snake" is adr_event_name's
@@ -241,18 +241,18 @@ def test_claim6_event_not_in_catalog(cli, tmp_path):
     assert cli("check", "-", stdin=OK + "\n", cwd=tmp_path).returncode == 0
 
     # Baseline and disable apply.
-    (tmp_path / "l.jsonl").write_text(_line("new_thing_done") + "\n")
+    (tmp_path / "l.jsonl").write_text(_line("new_thing_done") + "\n", encoding="utf-8")
     assert cli("baseline", "l.jsonl", cwd=tmp_path).returncode == 0
     assert cli("check", "l.jsonl", "--baseline", ".logwarden-baseline.json", cwd=tmp_path).returncode == 0
-    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\ndisable = { adr_event_catalog = "later" }\n')
+    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\ndisable = { adr_event_catalog = "later" }\n', encoding="utf-8")
     assert cli("check", "l.jsonl", cwd=tmp_path).returncode == 0
 
 
 @pytest.mark.parametrize("content,msg", [(None, "not found"), ("[events\n", "not valid TOML"),
                                          ("events = 1\n", "expected [events.<name>] tables")])
 def test_claim6_bad_catalog_config(cli, tmp_path, content, msg):
-    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\n')
+    (tmp_path / "logwarden.toml").write_text('events = "ev.toml"\n', encoding="utf-8")
     if content is not None:
-        (tmp_path / "ev.toml").write_text(content)
+        (tmp_path / "ev.toml").write_text(content, encoding="utf-8")
     r = cli("check", "-", stdin=OK + "\n", cwd=tmp_path)
     assert r.returncode == 2 and msg in r.stderr, r.stderr

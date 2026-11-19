@@ -70,8 +70,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./
         with:
-          logs: tests/data/review.jsonl
+          logs: tests/data/review.jsonl   # has one known finding on main, so a PR can show "fixed"
           comment: "true"
+          fail: "false"
 
   # Without write permission (like a fork's PR) the comment step warns and the job passes.
   review-readonly:
