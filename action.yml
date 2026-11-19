@@ -15,27 +15,145 @@ inputs:
     description: Fail the step on violations. Set "false" to only report while migrating.
     required: false
     default: "true"
+  compare:
+    description: >
+      "auto": on pull requests compare with the base branch's latest snapshot (from the Actions
+      cache), on other events save this run's snapshot there. A file path compares with that
+      snapshot or baseline. "false" turns comparing off.
+    required: false
+    default: auto
+  comment:
+    description: Post the Markdown summary as one pull-request comment, updated on each push. Needs pull-requests write permission.
+    required: false
+    default: "false"
+  upload:
+    description: Upload logwarden.report/ (report.html, report.md, result.json, snapshot.json) as the artifact named by artifact-name.
+    required: false
+    default: "true"
+  artifact-name:
+    description: Name of the uploaded report artifact.
+    required: false
+    default: logwarden-report
+  snapshot-id:
+    description: Names this check's snapshots in the cache. Set a different one when a job checks several log files.
+    required: false
+    default: ${{ github.job }}
+  token:
+    description: Token for the PR comment.
+    required: false
+    default: ${{ github.token }}
+outputs:
+  violations:
+    description: Number of violations (after disable and the baseline).
+    value: ${{ steps.check.outputs.violations }}
+  new:
+    description: Findings not in the base snapshot (empty when not comparing).
+    value: ${{ steps.check.outputs.new }}
+  fixed:
+    description: Base findings that no longer occur (empty when not comparing).
+    value: ${{ steps.check.outputs.fixed }}
 runs:
   using: composite
   steps:
     - uses: astral-sh/setup-uv@v6
+    - name: Restore the base branch's snapshot
+      if: inputs.compare == 'auto' && startsWith(github.event_name, 'pull_request')
+      uses: actions/cache/restore@v4
+      with:
+        path: .logwarden-base/snapshot.json
+        # No exact key: the newest snapshot saved on the base branch wins.
+        key: logwarden-snapshot-${{ inputs.snapshot-id }}-${{ github.base_ref }}-none
+        restore-keys: logwarden-snapshot-${{ inputs.snapshot-id }}-${{ github.base_ref }}-
     - name: Check logs
+      id: check
       shell: bash
       env:
         LW_LOGS: ${{ inputs.logs }}
         LW_FIELDS: ${{ inputs.fields }}
-        LW_FAIL: ${{ inputs.fail }}
+        LW_COMPARE: ${{ inputs.compare }}
+        LW_EVENT: ${{ github.event_name }}
       run: |
         # logwarden is built from this action's own checkout, so action and CLI are one version.
         args=(check "$LW_LOGS" -o logwarden.report --max 50)
         [ -n "$LW_FIELDS" ] && args+=(--fields "$LW_FIELDS")
+        case "$LW_COMPARE" in
+          auto)
+            if [[ "$LW_EVENT" == pull_request* ]]; then
+              if [ -f .logwarden-base/snapshot.json ]; then
+                args+=(--compare .logwarden-base/snapshot.json)
+              else
+                echo "::notice::logwarden: no snapshot from the base branch yet; it is saved when the action runs on a push there"
+              fi
+            fi ;;
+          false|"") ;;
+          *) args+=(--compare "$LW_COMPARE") ;;
+        esac
         mkdir -p logwarden.report
         set +e
         uvx --quiet --from "$GITHUB_ACTION_PATH" logwarden "${args[@]}" | tee logwarden.report/summary.txt
         rc=${PIPESTATUS[0]}
         set -e
-        { echo "### logwarden"; echo '```'; cat logwarden.report/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-        if [ "$rc" -eq 1 ] && [ "$LW_FAIL" != "true" ]; then
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ -f logwarden.report/report.md ]; then
+          cat logwarden.report/report.md >> "$GITHUB_STEP_SUMMARY"
+          uv run --no-project --quiet python - >> "$GITHUB_OUTPUT" <<'EOF' || true
+        import json
+        r = json.load(open("logwarden.report/result.json", encoding="utf-8"))
+        c = r.get("compare") or {}
+        print(f"violations={r['violations']}\nnew={c.get('new', '')}\nfixed={c.get('fixed', '')}")
+        EOF
+        else
+          { echo "### logwarden"; echo '```'; cat logwarden.report/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        if [ "$LW_COMPARE" = auto ] && [[ "$LW_EVENT" != pull_request* ]] && [ -f logwarden.report/snapshot.json ]; then
+          mkdir -p .logwarden-base && cp logwarden.report/snapshot.json .logwarden-base/snapshot.json
+          echo "save=true" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Save this run's snapshot for pull requests
+      if: steps.check.outputs.save == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: .logwarden-base/snapshot.json
+        key: logwarden-snapshot-${{ inputs.snapshot-id }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event.pull_request.number && hashFiles('logwarden.report/report.md') != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        LW_PR: ${{ github.event.pull_request.number }}
+        LW_REPO: ${{ github.repository }}
+      run: |
+        marker='<!-- logwarden-report -->'
+        id=$(gh api "repos/$LW_REPO/issues/$LW_PR/comments" --paginate \
+               --jq ".[] | select(.body | startswith(\"$marker\")) | .id" 2>/dev/null | head -n 1) || id=""
+        if [ -n "$id" ]; then
+          out=$(gh api -X PATCH "repos/$LW_REPO/issues/comments/$id" -F body=@logwarden.report/report.md --jq .html_url 2>&1) && ok=1 || ok=0
+        else
+          out=$(gh api "repos/$LW_REPO/issues/$LW_PR/comments" -F body=@logwarden.report/report.md --jq .html_url 2>&1) && ok=1 || ok=0
+        fi
+        if [ "$ok" = 1 ]; then
+          echo "logwarden: PR comment $out"
+        else
+          echo "::warning::logwarden could not comment on the pull request (it needs 'pull-requests: write'; pull requests from forks get a read-only token): $out"
+        fi
+    - name: Upload the report
+      if: inputs.upload == 'true' && hashFiles('logwarden.report/report.html') != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          logwarden.report/report.html
+          logwarden.report/report.md
+          logwarden.report/result.json
+          logwarden.report/snapshot.json
+        overwrite: true
+    - name: Result
+      shell: bash
+      env:
+        LW_RC: ${{ steps.check.outputs.rc }}
+        LW_FAIL: ${{ inputs.fail }}
+      run: |
+        if [ "$LW_RC" -eq 1 ] && [ "$LW_FAIL" != "true" ]; then
           echo "::warning::logwarden found violations (report only)"; exit 0
         fi
-        exit "$rc"
+        exit "$LW_RC"

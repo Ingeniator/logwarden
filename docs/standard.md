@@ -67,6 +67,11 @@ log.info(f"Imported {n} rows")                 # ❌
 log.info("import_completed", rows_imported=n)  # ✅
 ```
 
+**[checked]** when the config names an event catalog (`events = "logwarden-events.toml"`):
+every event is listed there with a description, so new and renamed events get reviewed.
+`logwarden catalog` writes and updates the file.
+[`adr_event_catalog`](rules.md#adr_event_catalog)
+
 ## 5. Levels
 
 | Level | For |

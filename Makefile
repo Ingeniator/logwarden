@@ -16,6 +16,8 @@ golden:  ## Regenerate tests/golden from the examples (review the diff before co
 	-uv run logwarden check examples/bad.jsonl --max 1000 > tests/golden/bad.txt
 	-uv run logwarden check tests/data/mixed.jsonl --json > tests/golden/mixed.json
 	-uv run logwarden check tests/data/mixed.jsonl --max 1000 > tests/golden/mixed.txt
+	-uv run logwarden check examples/good.jsonl --snapshot /tmp/logwarden-good.json > /dev/null
+	-cd tests/golden && cp /tmp/logwarden-good.json base.json && uv run logwarden check ../../examples/bad.jsonl --compare base.json --markdown bad-vs-good.md > /dev/null; rm -f base.json
 	git diff --stat tests/golden
 
 .PHONY: check

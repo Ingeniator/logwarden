@@ -31,6 +31,29 @@ log.info("models_loaded", models_count=n)   # ✅
 fields. Lines from third-party libraries often fail this too. Map their message into a
 field (e.g. `message`) and set a fixed `event` in the shared formatter, or silence the logger.
 
+## adr_event_catalog
+
+Runs only when the config names an event catalog: `events = "logwarden-events.toml"`. Fails
+on a line whose event isn't listed in the catalog. Dashboards, alerts and queries match on
+event names, so a renamed or new event should be a reviewed change, not a surprise (§4).
+Events that `adr_event_name` already rejects aren't reported again.
+
+```toml
+# logwarden-events.toml
+[events.order_imported]
+description = "An order file was parsed and stored."
+levels = ["info"]
+```
+
+```json
+{"event":"order_imported", ...}     ✅ listed
+{"event":"order_imprted", ...}      ❌ not in logwarden-events.toml
+```
+
+**Fix:** if the event is new on purpose, add it with a description:
+`logwarden catalog logs.jsonl -o logwarden-events.toml` adds every new event of a run and
+keeps the existing entries. If it's a typo or a renamed event, log the listed name instead.
+
 ## adr_banned_synonym
 
 A field uses a common ad-hoc name for something semconv already names. The message says

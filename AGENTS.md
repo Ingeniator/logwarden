@@ -13,12 +13,14 @@ applying the project's `disable` list and baseline (`check.Policy`).
 
 | Path | Role |
 |---|---|
-| `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
+| `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
 | `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), `disable` and baseline, the result dict |
 | `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv release archive (pinned SHA-256 in `SEMCONV_SHA256`) |
+| `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit) and the self-contained HTML report |
+| `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |
-| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`) |
+| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`, `upstreams`, `events`) |
 | `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
 | `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
@@ -29,7 +31,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/mcp_server.py` | MCP server (`logwarden mcp`, `[mcp]` extra) |
 | `docs/standard.md`, `docs/rules.md` | The standard and one section per rule. Copied into the wheel |
 | `plugin/`, `.claude-plugin/marketplace.json` | Claude Code plugin (skill, MCP config, `/logwarden:check`) and its marketplace |
-| `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx` |
+| `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx`; base snapshot through the Actions cache, PR comment, report artifact. CI jobs `action`, `review` and `review-readonly` exercise it |
 | `Dockerfile` | Image `ghcr.io/ingeniator/logwarden`: Weaver and semconv downloaded at build time, so it works offline |
 | `docs/recipes/`, `examples/recipes/` | Node, Go and Java logger setups; `examples/recipes/check.sh` runs each example and checks its output (CI job `recipes`) |
 | `tests/golden/` | Reviewed full output for the example files. Regenerate only on purpose (`make golden`), review the diff, and explain it in the release notes |
@@ -83,6 +85,11 @@ logged value of a possibly sensitive field.
   `^(.*[._-])?name$`, not `(^|[._-])name$`.
 - Semgrep is never a dependency: it pins old OpenTelemetry and `mcp` versions. `lint-code`
   runs it from PATH or with `uvx`.
+- Reports never show logged values: only rule messages (which never contain them), event and
+  field names. Escape everything in HTML and Markdown (`tests/test_review.py` logs
+  `<script>` as an event name).
+- Snapshots use the baseline's entry format (`make_baseline`), so a baseline also works as
+  `--compare`. `--compare` never changes the exit code.
 - `capture` writes only the result to stdout; the wrapped command's stdout goes to stderr.
 - Rule ids, the `--json` keys and exit codes are a public interface for CI configs, agent
   prompts and the Action. Only add, never rename. Add a new id and keep the old one if needed.

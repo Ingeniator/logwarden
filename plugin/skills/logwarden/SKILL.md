@@ -76,6 +76,15 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
     but only make them when asked.
 - If the project has a baseline, `check` only shows new findings. That's expected: fix
   what your change introduced.
+- **Event catalog:** if the project config sets `events = "logwarden-events.toml"`,
+  `adr_event_catalog` reports events that aren't listed. When you add an event on purpose,
+  add it to that file with a one-line description (by hand, or with
+  `logwarden catalog <logs> -o logwarden-events.toml`) and mention it in your summary.
+  Prefer an existing event over a near-duplicate name; if the finding is a typo, fix the name.
+- To show what your change did to the logs, compare with a run on the base branch:
+  `logwarden check <base logs> --snapshot /tmp/base.json`, then
+  `logwarden check <logs> --compare /tmp/base.json --json` (`compare.new_findings`,
+  `compare.fixed_entries`, `compare.new_events`).
 - Only add a field to `logwarden-fields.yaml` when it's a real domain field: no
   semconv equivalent, snake_case, no semconv prefix, and safe to log. Say so in your
   summary.

@@ -64,6 +64,17 @@ def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None
     """Fields file and policy (disabled rules, baseline) for a check run in `cwd`."""
     cfg = _load_config(cwd)
     policy = check.Policy(disabled=dict(cfg.disable), upstreams=list(cfg.upstreams))
+    if cfg.events:
+        from logwarden import catalog
+        p = Path(cfg.events)
+        if not p.is_file():
+            raise UsageError(f"event catalog {p} not found; create it with "
+                             f"'logwarden catalog <logs> -o {os.path.relpath(p, cwd)}'")
+        try:
+            policy.events = catalog.load(p)
+        except catalog.CatalogError as e:
+            raise UsageError(str(e)) from e
+        policy.events_path = os.path.relpath(p, cwd)
     chosen = None if no_baseline else (baseline or cfg.baseline)
     if chosen:
         p = Path(chosen)
@@ -81,22 +92,85 @@ def cmd_check(a: argparse.Namespace) -> int:
     return _check_text(_read_input(a.input), a)
 
 
+def _write(path: Path, content: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except OSError as e:
+        raise UsageError(f"can't write {path}: {e}") from e
+
+
 def _check_text(text: str, a: argparse.Namespace) -> int:
+    from logwarden import report
     fields, policy = resolve(Path.cwd(), fields=a.fields, registry=a.registry,
                              baseline=a.baseline, no_baseline=a.no_baseline)
+    base = None
+    if a.compare:
+        p = Path(a.compare)
+        if not p.is_file():
+            raise UsageError(f"--compare: no such file: {a.compare}")
+        try:
+            base = check.load_compare(p)
+        except check.CheckError as e:
+            raise UsageError(f"--compare: {e}") from e
     try:
-        result = check.run(text, fields=fields,
+        an = check.analyse(text, fields=fields,
                            registry=Path(a.registry) if a.registry else None,
-                           out=Path(a.o) if a.o else None, policy=policy)
+                           out=Path(a.o) if a.o else None, policy=policy,
+                           compare=base, compare_path=a.compare)
     except check.CheckError as e:
         raise UsageError(str(e)) from e
+    result = an.result
     if a.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(output.text(result, a.max))
+    snapshot = json.dumps(an.snapshot, indent=2, ensure_ascii=False) + "\n"
+    targets = [(a.snapshot, lambda: snapshot), (a.markdown, lambda: report.markdown(result)),
+               (a.html, lambda: report.html(result, an.events))]
+    if a.o:
+        targets += [(str(Path(a.o) / "snapshot.json"), lambda: snapshot),
+                    (str(Path(a.o) / "report.md"), lambda: report.markdown(result)),
+                    (str(Path(a.o) / "report.html"), lambda: report.html(result, an.events))]
+    for path, render in targets:
+        if path:
+            _write(Path(path), render())
     if a.o:
         _err(f"full output in {a.o}")
     return 0 if result["ok"] else 1
+
+
+def cmd_catalog(a: argparse.Namespace) -> int:
+    from logwarden import catalog
+    records, _ = check.parse_lines(_read_input(a.input))
+    seen = catalog.collect(records)
+    if a.output:
+        target = Path(a.output)
+        try:
+            added, total = catalog.write(target, seen)
+        except catalog.CatalogError as e:
+            raise UsageError(str(e)) from e
+        except OSError as e:
+            raise UsageError(f"can't write {target}: {e}") from e
+        print(f"wrote {target}: {total} events, {added} new"
+              + ("; describe them, then set  events = \"" + a.output + "\"  in the logwarden config"
+                 if added else ""))
+        return 0
+    if a.json:
+        print(json.dumps({"tool": "logwarden", "version": __version__, "events": seen},
+                         indent=2, ensure_ascii=False))
+    elif a.markdown:
+        described = {}
+        cfg = config.load(Path.cwd())
+        if cfg.events and Path(cfg.events).is_file():
+            try:
+                described = catalog.load(Path(cfg.events))
+            except catalog.CatalogError:
+                pass
+        print(catalog.markdown(seen, described), end="")
+    else:
+        print(catalog.text(seen))
+    return 0
 
 
 _OTEL_PROTOCOLS = ("http/protobuf", "http/json")
@@ -191,7 +265,7 @@ def cmd_baseline(a: argparse.Namespace) -> int:
     try:
         found, _, _ = check.evaluate(text, fields=fields,
                                      registry=Path(a.registry) if a.registry else None,
-                                     upstreams=policy.upstreams)
+                                     upstreams=policy.upstreams, policy=policy)
     except check.CheckError as e:
         raise UsageError(str(e)) from e
     content = check.make_baseline(found, policy)
@@ -273,6 +347,14 @@ def cmd_mcp(_: argparse.Namespace) -> int:
     return 0
 
 
+def _report_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--compare", metavar="FILE",
+                   help="report new and fixed findings against a snapshot (or baseline) of the base branch")
+    p.add_argument("--snapshot", metavar="FILE", help="save what this run found, to --compare with later")
+    p.add_argument("--html", metavar="FILE", help="write a self-contained HTML report")
+    p.add_argument("--markdown", metavar="FILE", help="write a Markdown summary (PR comment, job summary)")
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="logwarden",
@@ -287,10 +369,12 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--json", action="store_true", help="machine-readable result (CI tools, AI agents)")
     c.add_argument("--fields", help=f"project-only fields file (default: config, then ./{FIELDS_DEFAULT})")
     c.add_argument("--registry", help="full Weaver registry overlay (advanced; replaces --fields)")
-    c.add_argument("-o", metavar="DIR", help="keep samples.json, live_check.json and result.json in DIR")
+    c.add_argument("-o", metavar="DIR", help="keep samples.json, live_check.json, result.json and the "
+                                              "reports (report.html, report.md, snapshot.json) in DIR")
     c.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
     c.add_argument("--baseline", metavar="FILE", help="fail only on findings not in FILE (default: config)")
     c.add_argument("--no-baseline", action="store_true", help="ignore the configured baseline")
+    _report_args(c)
     c.set_defaults(fn=cmd_check)
 
     b = sub.add_parser("baseline", help="record current findings so check fails only on new ones")
@@ -315,8 +399,20 @@ def parser() -> argparse.ArgumentParser:
     cap.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
     cap.add_argument("--baseline", metavar="FILE", help="as for check")
     cap.add_argument("--no-baseline", action="store_true", help="as for check")
+    _report_args(cap)
     cap.add_argument("command", nargs=argparse.REMAINDER, help="-- command to run, e.g. -- npm test")
     cap.set_defaults(fn=cmd_capture, registry=None, o=None)
+
+    cat = sub.add_parser("catalog", help="list the event names a run logs, or write the event catalog file",
+                         description="List every event in a log file (count, levels, fields). With -o, "
+                                     "add new events to the catalog file (TOML), keeping existing entries.")
+    cat.add_argument("input", help="log file, or - for stdin")
+    cat.add_argument("-o", "--output", metavar="FILE", help="catalog file to create or update, "
+                                                           "e.g. logwarden-events.toml")
+    fmt = cat.add_mutually_exclusive_group()
+    fmt.add_argument("--json", action="store_true", help="machine-readable list")
+    fmt.add_argument("--markdown", action="store_true", help="Markdown table (with descriptions from the catalog)")
+    cat.set_defaults(fn=cmd_catalog)
 
     lc = sub.add_parser("lint-code", help="check source code with logwarden's Semgrep rules (needs semgrep)",
                         description="Run logwarden's Semgrep rules (Python, JavaScript/TypeScript, Go, Java) "

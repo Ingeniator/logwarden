@@ -22,6 +22,8 @@ _RECORD_KEYS = {"timestamp", "level", "event", "trace_id", "span_id"}
 _NAMING_RULES = {"adr_banned_synonym", "adr_semconv_prefix"}
 NON_JSON = "adr_non_json_line"
 UPSTREAM = "adr_upstream_failure_coverage"
+EVENT_CATALOG = "adr_event_catalog"
+_SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 BASELINE_FORMAT = 1
 
 
@@ -149,6 +151,8 @@ class Policy:
     baseline: dict | None = None
     baseline_path: str | None = None
     upstreams: list[str] = field(default_factory=list)
+    events: dict | None = None          # the event catalog's events, when configured
+    events_path: str | None = None
 
 
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -191,8 +195,24 @@ def upstream_findings(records: list[Record], upstreams: list[str]) -> list[dict]
             for host in upstreams if host not in covered]
 
 
+def catalog_findings(records: list[Record], events: dict | None, path: str | None) -> list[dict]:
+    """§4: with a catalog configured, every (well-formed) event name is listed in it."""
+    if events is None:
+        return []
+    where = path or "the event catalog"
+    return [{"rule": EVENT_CATALOG, "level": "violation", "field": None,
+             "message": f"§4: event '{ev}' is not in {where}; add it with a description "
+                        "(logwarden catalog LOGS -o FILE adds new events)",
+             "line": r.line, "event": ev, "logger": _str(r.obj.get("logger")), "fp_event": ev,
+             "renames": False}
+            for r in records
+            # A malformed name is adr_event_name's finding; don't report it twice.
+            if isinstance(ev := r.obj.get("event"), str) and _SNAKE.match(ev) and ev not in events]
+
+
 def collect(live_check: dict, records: list[Record], bad: list[BadLine],
-            upstreams: list[str] | None = None) -> list[dict]:
+            upstreams: list[str] | None = None, events: dict | None = None,
+            events_path: str | None = None) -> list[dict]:
     """Every finding: Weaver's (per sample) plus logwarden's own line and run rules."""
     found = []
     for i, sample in enumerate(live_check.get("samples") or []):
@@ -233,6 +253,7 @@ def collect(live_check: dict, records: list[Record], bad: list[BadLine],
         found.append({"rule": NON_JSON, "level": "violation", "field": None,
                       "message": f"§1: line is not a JSON object ({b.kind})",
                       "line": b.line, "event": None, "logger": "", "fp_event": f"line:{digest}"})
+    found += catalog_findings(records, events, events_path)
     found.sort(key=lambda f: f["line"])
     return found + upstream_findings(records, upstreams or [])
 
@@ -362,8 +383,16 @@ def _fields_registry(fields: Path, into: Path, base: Path) -> Path:
 
 
 def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = None,
-             out: Path | None = None, upstreams: list[str] | None = None) -> tuple[list[dict], int, int]:
+             out: Path | None = None, upstreams: list[str] | None = None,
+             policy: Policy | None = None) -> tuple[list[dict], int, int]:
     """Run Weaver on log text: (all findings, JSON records, total lines). Raises CheckError."""
+    found, records, total = _evaluate(text, fields=fields, registry=registry, out=out,
+                                      upstreams=upstreams, policy=policy)
+    return found, len(records), total
+
+
+def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Path | None,
+              upstreams: list[str] | None, policy: Policy | None) -> tuple[list[dict], list[Record], int]:
     if fields and registry:
         raise CheckError("use fields or registry, not both")
     if fields and not fields.is_file():
@@ -406,18 +435,88 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
             errors = [ln for ln in log.splitlines() if "×" in ln or "rror" in ln]
             raise CheckError("weaver produced no report (registry or fields file invalid?)\n"
                              + "\n".join(errors or log.splitlines()[-20:]))
-        found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad, upstreams)
-    return found, len(records), total
+        found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad, upstreams,
+                        events=policy.events if policy else None,
+                        events_path=policy.events_path if policy else None)
+    return found, records, total
+
+
+@dataclass
+class Analysis:
+    result: dict
+    snapshot: dict
+    events: dict          # catalog.collect() of the run
+
+
+def analyse(text: str, *, fields: Path | None = None, registry: Path | None = None,
+            out: Path | None = None, policy: Policy | None = None,
+            compare: dict | None = None, compare_path: str | None = None) -> Analysis:
+    """Check log text, plus the run's snapshot and events (and the comparison with `compare`)."""
+    from logwarden import catalog
+    policy = policy or Policy()
+    found, records, total = _evaluate(text, fields=fields, registry=registry, out=out,
+                                      upstreams=policy.upstreams, policy=policy)
+    result = summarise(found, len(records), total, policy)
+    events = catalog.collect(records)
+    snap = make_snapshot(found, policy, events)
+    if compare is not None:
+        result["compare"] = compare_with(found, policy, events, compare, compare_path)
+    if out:
+        (out / "result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False),
+                                         encoding="utf-8")
+    return Analysis(result, snap, events)
 
 
 def run(text: str, *, fields: Path | None = None, registry: Path | None = None,
         out: Path | None = None, policy: Policy | None = None) -> dict:
     """Check log text. Raises CheckError on setup problems."""
-    policy = policy or Policy()
-    found, n_records, total = evaluate(text, fields=fields, registry=registry, out=out,
-                                       upstreams=policy.upstreams)
-    result = summarise(found, n_records, total, policy)
-    if out:
-        (out / "result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False),
-                                         encoding="utf-8")
-    return result
+    return analyse(text, fields=fields, registry=registry, out=out, policy=policy).result
+
+
+def make_snapshot(found: list[dict], policy: Policy | None, events: dict) -> dict:
+    """What a run found, for `--compare` on another run: baseline entries plus event counts."""
+    snap = make_baseline(found, policy)
+    snap["kind"] = "snapshot"
+    snap["about"] = ("What one logwarden run found. Compare another run with it: "
+                     "logwarden check LOGS --compare FILE")
+    snap["events"] = {name: e["count"] for name, e in events.items()}
+    return snap
+
+
+def load_compare(path: Path) -> dict:
+    """A snapshot or a baseline file to compare with. Raises CheckError."""
+    content = load_baseline(path)
+    if "events" in content and not (isinstance(content["events"], dict)
+                                    and all(isinstance(k, str) for k in content["events"])):
+        raise CheckError(f"{path}: 'events' must map event names to counts")
+    for e in content["entries"]:
+        if not (isinstance(e, dict) and {"rule", "field", "logger", "event"} <= set(e)):
+            raise CheckError(f"{path}: every entry needs rule, field, logger and event")
+    return content
+
+
+def compare_with(found: list[dict], policy: Policy, events: dict, base: dict,
+                 base_path: str | None = None) -> dict:
+    """New, fixed and unchanged findings (by baseline key, so moved lines match) and events."""
+    off = set(policy.disabled)
+    first: dict[tuple, dict] = {}
+    for v in violations_of([f for f in found if f["rule"] not in off]):
+        first.setdefault(fingerprint(v), v)
+    known = {(e["rule"], e["field"] or "", e["logger"], e["event"]): e.get("count", 1)
+             for e in base["entries"] if e["rule"] not in off}
+    new = sorted((v for k, v in first.items() if k not in known),
+                 key=lambda f: (f["line"] is None, f["line"] or 0))
+    fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}
+             for k, n in sorted(known.items()) if k not in first]
+    base_events = base.get("events")
+    return {
+        "base": base_path,
+        "new": len(new),
+        "fixed": len(fixed),
+        "unchanged": len(set(first) & set(known)),
+        "new_findings": [{k: f[k] for k in ("line", "event", "rule", "field", "message")}
+                         for f in new[:MAX_FINDINGS]],
+        "fixed_entries": fixed[:MAX_FINDINGS],
+        "new_events": None if base_events is None else sorted(set(events) - set(base_events)),
+        "gone_events": None if base_events is None else sorted(set(base_events) - set(events)),
+    }

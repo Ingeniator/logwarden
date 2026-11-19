@@ -12,7 +12,7 @@ WEAVER_BUILTIN = {"missing_attribute", "deprecated", "type_mismatch"}
 
 def _own_rules():
     rego = data.path("policies/logwarden.rego").read_text(encoding="utf-8")
-    return set(re.findall(r'make_advice\("([a-z_]+)"', rego)) - {"advice_type"} | {check.NON_JSON, check.UPSTREAM}
+    return set(re.findall(r'make_advice\("([a-z_]+)"', rego)) - {"advice_type"} | {check.NON_JSON, check.UPSTREAM, check.EVENT_CATALOG}
 
 
 def test_every_rule_documented():
@@ -31,5 +31,6 @@ def test_every_rule_documented():
 @pytest.mark.weaver
 def test_bad_example_triggers_every_own_rule(cli, tmp_path):
     res = json.loads(cli("check", EXAMPLES / "bad.jsonl", "--json", cwd=tmp_path).stdout)
-    # Upstream coverage needs `upstreams` in the config; tests/test_upstreams.py covers it.
-    assert _own_rules() - {check.UPSTREAM} <= {r["rule"] for r in res["by_rule"]}
+    # Upstream coverage and the event catalog need config; test_upstreams.py and
+    # test_review.py cover them.
+    assert _own_rules() - {check.UPSTREAM, check.EVENT_CATALOG} <= {r["rule"] for r in res["by_rule"]}

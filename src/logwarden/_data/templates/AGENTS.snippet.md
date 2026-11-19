@@ -16,4 +16,6 @@ This project follows the logging standard checked by
 - Fix findings from your own changes. Don't silence them: don't regenerate the baseline
   or add rules to `disable` unless asked. Project-only fields go in
   `logwarden-fields.yaml`, but only when no semconv name exists.
+- If the config sets `events = "logwarden-events.toml"`, add each new event to that file with
+  a description (`uvx logwarden catalog <logs> -o logwarden-events.toml` adds them).
 - Details: `logwarden rules <id>` and https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md.

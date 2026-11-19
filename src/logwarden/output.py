@@ -18,6 +18,12 @@ def text(result: dict, max_findings: int = 20) -> str:
     if result.get("baselined"):
         head += f", {result['baselined']} more known in baseline {result['baseline']}"
     out.append(head)
+    c = result.get("compare")
+    if c:
+        line = f"compared with {c['base'] or 'base'}: {c['new']} new, {c['fixed']} fixed, {c['unchanged']} unchanged"
+        if c.get("new_events"):
+            line += f"; new events: {', '.join(c['new_events'][:10])}" + (" ..." if len(c["new_events"]) > 10 else "")
+        out.append(line)
     if result["violations"] == 0:
         out.append("OK")
     for r in result["by_rule"]:

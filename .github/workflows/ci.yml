@@ -33,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: good logs pass
+        id: good
         uses: ./
         with:
           logs: examples/good.jsonl
@@ -41,15 +42,52 @@ jobs:
         with:
           logs: examples/bad.jsonl
           fail: "false"
+          compare: "false"
+          upload: "false"
       - name: bad logs fail
         id: bad
         continue-on-error: true
         uses: ./
         with:
           logs: examples/bad.jsonl
-      - name: expect failure
-        if: steps.bad.outcome != 'failure'
-        run: exit 1
+          compare: "false"
+          artifact-name: logwarden-report-bad
+      - name: expect failure, and the outputs
+        env:
+          GOOD: ${{ steps.good.outputs.violations }}
+          BAD: ${{ steps.bad.outputs.violations }}
+        run: |
+          [ "${{ steps.bad.outcome }}" = failure ]
+          [ "$GOOD" = 0 ] && [ "$BAD" = 10 ]
+
+  # Compares with main's snapshot (Actions cache) and comments on the PR (v0.7.0 claim 4).
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          logs: tests/data/review.jsonl
+          comment: "true"
+
+  # Without write permission (like a fork's PR) the comment step warns and the job passes.
+  review-readonly:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          logs: examples/good.jsonl
+          comment: "true"
+          compare: "false"
+          upload: "false"
 
   package:
     runs-on: ubuntu-latest

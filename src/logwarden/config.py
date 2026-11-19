@@ -13,7 +13,7 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams"}
+KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams", "events"}
 DEFAULT_FIELDS = "logwarden-fields.yaml"
 DEFAULT_BASELINE = ".logwarden-baseline.json"
 
@@ -22,6 +22,7 @@ DEFAULT_BASELINE = ".logwarden-baseline.json"
 class Config:
     fields: str | None = None
     baseline: str | None = None
+    events: str | None = None           # event catalog file (TOML)
     disable: dict[str, str] = field(default_factory=dict)
     upstreams: list[str] = field(default_factory=list)
     source: str | None = None
@@ -46,7 +47,7 @@ def load(cwd: Path) -> Config:
         return cfg
     for key in sorted(set(data) - KNOWN_KEYS):
         cfg.warnings.append(f"{cfg.source}: unknown key '{key}' (known: {', '.join(sorted(KNOWN_KEYS))})")
-    for key in ("fields", "baseline"):
+    for key in ("fields", "baseline", "events"):
         if isinstance(data.get(key), str):
             setattr(cfg, key, str(cwd / data[key]))
         elif key in data:

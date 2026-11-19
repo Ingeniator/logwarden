@@ -38,6 +38,7 @@ findings (first 20):
 | `adr_non_json_line` | a plain-text line (a library banner, a printed traceback) |
 | `adr_trace_context` | a `trace_id`/`span_id` that isn't W3C lowercase hex |
 | `adr_upstream_failure_coverage` | an upstream in `upstreams` whose failure path no test exercised |
+| `adr_event_catalog` | an event missing from the event catalog, when `events` is configured |
 
 The standard is in [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md), and each rule's fix is in
 [docs/rules.md](https://github.com/Ingeniator/logwarden/blob/main/docs/rules.md).
@@ -70,11 +71,18 @@ log = configure(service_name="billing-api", service_version="1.4.2", environment
 ```
 
 ```yaml
-# CI
+# CI: on pull requests, compares with the base branch and comments new/fixed counts
 - uses: Ingeniator/logwarden@v0.6.0
   with:
     logs: logs.jsonl
+    comment: "true"             # needs permissions: pull-requests: write
 ```
+
+Reviewing a change: `check --compare base.json` lists new and fixed findings against a
+snapshot of the base branch (`check --snapshot`), `--html` writes a self-contained report
+and `--markdown` a PR-comment summary. `logwarden catalog logs.jsonl` lists the events a
+service logs; commit them as `logwarden-events.toml` and `check` reports events that
+aren't in it.
 
 Also lint the source: `logwarden lint-code src/` runs logwarden's Semgrep rules (Python,
 JavaScript/TypeScript, Go, Java) for formatted event names, secret and banned field names, and
@@ -110,10 +118,9 @@ OTLP log records into the same JSON lines first. Python 3.10+ on Linux, macOS or
 the Docker image (linux/amd64, linux/arm64). Weaver and the semantic conventions are
 downloaded on first use, checked against pinned SHA-256 sums and cached.
 
-## Not covered yet
+## Roadmap
 
-See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md): an HTML report with a diff against the base
-branch, a PR comment with new/fixed counts, an event-name catalog. Release notes are in
+See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md). Release notes are in
 [CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md).
 
 ## License

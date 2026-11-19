@@ -11,6 +11,12 @@
     "hint": "Use a fixed name like import_completed and move variable data into fields: log.info(\"import_completed\", rows_imported=n).",
     "doc": "docs/rules.md#adr_event_name"
   },
+  "adr_event_catalog": {
+    "section": "§4",
+    "title": "Event not in the event catalog",
+    "hint": "Add the event to the catalog file with a description (logwarden catalog LOGS -o FILE adds new events), or log an existing event instead.",
+    "doc": "docs/rules.md#adr_event_catalog"
+  },
   "adr_banned_synonym": {
     "section": "§2",
     "title": "Banned synonym for an OTel semconv field",

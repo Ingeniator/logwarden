@@ -148,6 +148,72 @@ the call sites. When `check` reports baseline entries that no longer occur, run
 rule, field, logger and event name (numbers and ids masked), so code moving around doesn't
 break it. `fail: "false"` in the Action still works for a report-only start.
 
+### Review: compare with the base branch, PR comment, HTML report
+
+A snapshot records what a run found. A later run compared with it reports which findings
+are new and which were fixed, matched like baseline entries (so moved lines aren't new), and
+which event names appeared or disappeared:
+
+```bash
+logwarden check logs.jsonl --snapshot base.json               # on the base branch
+logwarden check logs.jsonl --compare base.json \
+    --html report.html --markdown report.md                   # on a branch
+```
+
+`--compare` only reports; the exit code doesn't change. (To fail only on new findings, use
+the baseline.) `--html` writes one self-contained page; `--markdown` writes a summary that
+fits in a PR comment. `-o DIR` writes both, plus `snapshot.json`.
+
+The GitHub Action does all of this:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write          # only for comment: "true"
+steps:
+  - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
+  - uses: Ingeniator/logwarden@v0.6.0
+    with:
+      logs: logs.jsonl
+      comment: "true"
+```
+
+- **`compare: auto`** (default): on a push, the run's snapshot goes into the Actions cache;
+  on a pull request, the base branch's newest snapshot is restored and compared with. The
+  workflow must also run on pushes to the base branch, and comparing starts after the first
+  such push. A pull request can read the base branch's cache, so no extra token is needed.
+  `compare: path/to/snapshot.json` compares with a file; `compare: "false"` turns it off.
+- **`comment: "true"`**: posts the Markdown summary as one comment and updates it on each
+  push. Pull requests from forks get a read-only token, so there it only warns.
+- **`upload`** (default `"true"`): the artifact `logwarden-report` has `report.html`,
+  `report.md`, `result.json` and `snapshot.json`.
+- The job summary shows the Markdown summary. Outputs: `violations`, `new`, `fixed`.
+- Using the Action more than once in a job: give each use its own `snapshot-id` and
+  `artifact-name`.
+
+GitLab CI, keeping the target branch's snapshot as an artifact:
+
+```yaml
+logwarden:
+  image: python:3.13
+  script:
+    - pip install --quiet logwarden==0.6.0
+    - LOGWARDEN_CAPTURE=logs.jsonl pytest      # or however the job produces logs.jsonl
+    - |
+      COMPARE=""
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ] && curl -sfL -o base.zip \
+           --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/jobs/artifacts/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME/download?job=logwarden"; then
+        python -m zipfile -e base.zip base && COMPARE="--compare base/report/snapshot.json"
+      fi
+      logwarden check logs.jsonl -o report $COMPARE
+  artifacts:
+    when: always
+    paths: [report/report.html, report/report.md, report/snapshot.json]
+```
+
+`report/report.md` can be posted as a merge-request note with the GitLab API.
+
 ## 4. Project config and project-only fields
 
 ```toml
@@ -165,8 +231,25 @@ disable = { adr_sensitive_data = "user.email is required by the audit log (SEC-1
 upstreams = ["api.openai.com", "api.anthropic.com"]   # each needs a failure test
 ```
 
+```toml
+events = "logwarden-events.toml"      # event catalog: every event must be listed
+```
+
 `upstreams` lists the hosts the service calls. `check` fails when a test run has no failure
 line for one of them (`adr_upstream_failure_coverage`).
+
+`events` names the event catalog: the event names the service logs, each with a
+description. `check` reports an event that isn't listed (`adr_event_catalog`), so new and
+renamed events become a reviewed change; dashboards and alerts match on these names.
+`logwarden catalog logs.jsonl` lists the events of a run (`--markdown` for docs), and
+`logwarden catalog logs.jsonl -o logwarden-events.toml` creates the file or adds new
+events to it, keeping existing entries and descriptions:
+
+```toml
+[events.order_imported]
+description = "An order file was parsed and stored."
+levels = ["info"]
+```
 
 `disable` switches a rule off for this project. Each rule needs a reason, and disabled
 rules are listed with their reasons in every result.
