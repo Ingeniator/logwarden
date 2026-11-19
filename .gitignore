@@ -6,3 +6,8 @@ __pycache__/
 dist/
 .venv/
 .pytest_cache/
+examples/recipes/*/node_modules/
+examples/recipes/*/target/
+examples/recipes/*/logs.jsonl
+examples/recipes/*/otlp.jsonl
+logwarden-capture.jsonl

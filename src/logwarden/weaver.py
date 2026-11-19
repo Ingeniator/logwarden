@@ -172,6 +172,9 @@ def find(log=_stderr) -> str:
     if not hits:
         raise WeaverError(f"weaver binary not found in downloaded archive at {dest}")
     binary = hits[0]
-    if sys.platform != "win32":
-        binary.chmod(binary.stat().st_mode | 0o111)
+    if sys.platform != "win32" and not os.access(binary, os.X_OK):
+        try:  # a shared or read-only cache (e.g. the Docker image run as another user) is fine as is
+            binary.chmod(binary.stat().st_mode | 0o111)
+        except OSError as e:
+            raise WeaverError(f"weaver at {binary} is not executable and can't be made so: {e}") from e
     return str(binary)

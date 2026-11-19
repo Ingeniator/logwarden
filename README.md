@@ -5,7 +5,8 @@ every line that would make debugging harder: ad-hoc field names, missing service
 free-text events, and errors that don't say what failed. It exits with code 1 on
 problems, so CI and AI agents can use it the way they use tests.
 
-It checks output, not source code, so it works for any language. Field names follow
+It checks output, so it works for any language: JSON lines from a file or stdin, or logs sent
+over OTLP by any OpenTelemetry SDK. `logwarden lint-code` checks source code too. Field names follow
 [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/registry/attributes/),
 the names traces and metrics already use, so logs, traces and metrics can be queried together.
 
@@ -50,6 +51,17 @@ LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-
 logwarden check logs.jsonl                  # check them
 ```
 
+Other languages and Docker:
+
+```bash
+logwarden capture -o logs.jsonl -- npm test   # receive logs over OTLP while the command runs, then check
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 check logs.jsonl   # no Python needed
+```
+
+Setup recipes whose output passes: [Node (pino)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/node.md),
+[Go (slog)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/go.md),
+[Java (logback)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/java.md).
+
 Python services can get compliant logs from one call, and test helpers for failure logs:
 
 ```python
@@ -59,13 +71,15 @@ log = configure(service_name="billing-api", service_version="1.4.2", environment
 
 ```yaml
 # CI
-- uses: Ingeniator/logwarden@v0.5.0
+- uses: Ingeniator/logwarden@v0.6.0
   with:
     logs: logs.jsonl
 ```
 
-Also lint the source: Ruff `LOG`, `G` and `TRY400` rules for Python, and sloglint for Go, catch
-some of the same mistakes in every file before anything runs. The recommended config is in
+Also lint the source: `logwarden lint-code src/` runs logwarden's Semgrep rules (Python,
+JavaScript/TypeScript, Go, Java) for formatted event names, secret and banned field names, and
+`print` instead of the logger. Ruff `LOG`, `G` and `TRY400` rules for Python, and sloglint for Go,
+cover more cases in an existing lint setup. The recommended config is in
 [docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
 
 Project settings go in `[tool.logwarden]` in `pyproject.toml`, or in `logwarden.toml`.
@@ -91,14 +105,15 @@ project-only fields and migrating a legacy service.
 Each log line becomes a sample for [OTel Weaver](https://github.com/open-telemetry/weaver)
 `registry live-check`. Weaver checks the sample's field names against the semconv
 registry (plus logwarden's shared fields and the project's `logwarden-fields.yaml`) and
-runs the rules in `src/logwarden/_data/policies/logwarden.rego`. Python 3.10+ on Linux,
-macOS or Windows. Weaver is downloaded on first use and checked against its published
-SHA-256.
+runs the rules in `src/logwarden/_data/policies/logwarden.rego`. `logwarden capture` turns
+OTLP log records into the same JSON lines first. Python 3.10+ on Linux, macOS or Windows, or
+the Docker image (linux/amd64, linux/arm64). Weaver and the semantic conventions are
+downloaded on first use, checked against pinned SHA-256 sums and cached.
 
 ## Not covered yet
 
-See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md). Next up: baseline mode for legacy services, a
-sensitive-data rule, non-JSON lines, and a logging-setup library. Release notes are in
+See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md): an HTML report with a diff against the base
+branch, a PR comment with new/fixed counts, an event-name catalog. Release notes are in
 [CHANGELOG.md](https://github.com/Ingeniator/logwarden/blob/main/CHANGELOG.md).
 
 ## License

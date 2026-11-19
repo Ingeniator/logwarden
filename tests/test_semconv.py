@@ -52,3 +52,19 @@ def test_offline_after_first_run_and_env_override(cli, tmp_path):
              "WEAVER": binary}
     r = cli("check", EXAMPLES / "bad.jsonl", cwd=tmp_path, env=other)
     assert r.returncode == 1 and "downloading" not in r.stderr
+
+
+def test_read_only_cache_with_executable_weaver(tmp_path, monkeypatch):
+    """The Docker image runs as any user over a root-owned cache: no chmod when already executable."""
+    import sys
+    if sys.platform == "win32":
+        pytest.skip("POSIX permissions")
+    monkeypatch.delenv("WEAVER", raising=False)
+    monkeypatch.setenv("LOGWARDEN_CACHE", str(tmp_path))
+    monkeypatch.setattr(weaver.shutil, "which", lambda name: None)
+    exe = tmp_path / f"weaver-{weaver.WEAVER_VERSION}-{weaver.target()}" / "weaver"
+    exe.parent.mkdir()
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o555)
+    monkeypatch.setattr(type(exe), "chmod", lambda self, mode: (_ for _ in ()).throw(PermissionError("read-only")))
+    assert weaver.find() == str(exe)

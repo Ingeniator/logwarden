@@ -26,8 +26,12 @@ Your job is to make sure the code you write produces logs that pass.
   addresses, prompts or completions, chat content, or request/response bodies. Log ids,
   sizes and counts. `trace_id`/`span_id` come from the active span in W3C hex, or not at all.
 - Every line is JSON: route third-party loggers through the formatter, and never `print()`.
-- If the project uses Ruff or golangci-lint, run it too; the recommended logging rules
-  (Ruff `LOG`, `G`, `TRY400`; sloglint) are in docs/integration.md §6 of the logwarden repo.
+- Run `logwarden lint-code <changed paths> --json` (Python, JS/TS, Go, Java; uses Semgrep,
+  via uvx if it isn't installed) and fix its findings. If the project uses Ruff or
+  golangci-lint, run it too; the recommended logging rules (Ruff `LOG`, `G`, `TRY400`;
+  sloglint) are in docs/integration.md §6 of the logwarden repo.
+- Node, Go and Java services: follow the setup recipes (docs/recipes/ in the logwarden repo)
+  instead of inventing a logger configuration.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
   logging setup, never from call sites. In a Python service without a compliant setup,
   suggest `logwarden.logging.configure(...)` (`logwarden[structlog]`); in one that already
@@ -45,6 +49,9 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
    - Python + pytest: `LOGWARDEN_CAPTURE=/tmp/logs.jsonl pytest <tests you touched or added>`
      (works when `logwarden` is a dev dependency; otherwise
      `uv run --with logwarden pytest ...`, which adds it to the project environment for one run).
+   - A service with an OpenTelemetry SDK (any language):
+     `logwarden capture -o /tmp/logs.jsonl --json -- <test command>` receives its logs over
+     OTLP and checks them in one step.
    - Anything else: run the service or a smoke test and save stdout to `/tmp/logs.jsonl`.
 2. **Check** with either:
    - MCP: the `check_logs` tool (`path` or `lines`), provided by the logwarden plugin

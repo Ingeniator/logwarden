@@ -1,0 +1,319 @@
+# logwarden source checks for Semgrep: `logwarden lint-code` runs these.
+# They find in source what the runtime rules (docs/rules.md) find in logs, before anything runs.
+# The banned-key lists must equal `banned` in policies/logwarden.rego (tests/test_lint_code.py checks).
+rules:
+  - id: logwarden-event-name-python
+    languages: [python]
+    severity: ERROR
+    message: "§4: the log event must be a constant snake_case name like order_created; put variable data in fields"
+    metadata:
+      section: "§4"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(f"...", ...)
+          - pattern: $LOG.$M("..." % $X, ...)
+          - pattern: $LOG.$M("...".format(...), ...)
+          - pattern: $LOG.$M("..." + $X, ...)
+          - pattern: $LOG.$M($X + "...", ...)
+          - patterns:
+              - pattern: $LOG.$M("$S", ...)
+              - metavariable-regex:
+                  metavariable: $S
+                  regex: '^(?![a-z][a-z0-9_]*$)'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger|logging)$'
+      - metavariable-regex:
+          metavariable: $M
+          regex: '^(debug|info|warning|warn|error|exception|critical|fatal|msg)$'
+  - id: logwarden-event-name-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "§4: the log event must be a constant snake_case name like order_created; put variable data in fields"
+    metadata:
+      section: "§4"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(`...${$X}...`)
+          - pattern: $LOG.$M($A, `...${$X}...`, ...)
+          - pattern: $LOG.$M("..." + $X)
+          - pattern: $LOG.$M($A, "..." + $X, ...)
+          - patterns:
+              - pattern-either:
+                  - pattern: $LOG.$M("$S")
+                  - pattern: $LOG.$M({...}, "$S", ...)
+              - metavariable-regex:
+                  metavariable: $S
+                  regex: '^(?![a-z][a-z0-9_]*$)'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger)$'
+      - metavariable-regex:
+          metavariable: $M
+          regex: '^(trace|debug|info|warn|error|fatal)$'
+  - id: logwarden-event-name-go
+    languages: [go]
+    severity: ERROR
+    message: "§4: the log event must be a constant snake_case name like order_created; put variable data in fields"
+    metadata:
+      section: "§4"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: $LOG.$M(fmt.Sprintf(...), ...)
+                  - pattern: $LOG.$M("..." + $X, ...)
+                  - patterns:
+                      - pattern: $LOG.$M("$S", ...)
+                      - metavariable-regex:
+                          metavariable: $S
+                          regex: '^(?![a-z][a-z0-9_]*$)'
+              - metavariable-regex:
+                  metavariable: $M
+                  regex: '^(Debug|Info|Warn|Error)$'
+          - patterns:
+              - pattern-either:
+                  - pattern: $LOG.$M($CTX, fmt.Sprintf(...), ...)
+                  - pattern: $LOG.$M($CTX, "..." + $X, ...)
+                  - patterns:
+                      - pattern: $LOG.$M($CTX, "$S", ...)
+                      - metavariable-regex:
+                          metavariable: $S
+                          regex: '^(?![a-z][a-z0-9_]*$)'
+              - metavariable-regex:
+                  metavariable: $M
+                  regex: '^(Debug|Info|Warn|Error)Context$'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?(log|logger|slog)$'
+  - id: logwarden-event-name-java
+    languages: [java]
+    severity: ERROR
+    message: "§4: the log event must be a constant snake_case name like order_created; put variable data in fields"
+    metadata:
+      section: "§4"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(String.format(...), ...)
+          - pattern: $LOG.$M("..." + $X, ...)
+          - patterns:
+              - pattern: $LOG.$M("$S", ...)
+              - metavariable-regex:
+                  metavariable: $S
+                  regex: '^(?![a-z][a-z0-9_]*$)'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(log|logger)$'
+      - metavariable-regex:
+          metavariable: $M
+          regex: '^(trace|debug|info|warn|error)$'
+  - id: logwarden-sensitive-key-python
+    languages: [python]
+    severity: ERROR
+    message: "§8: never log secrets or credentials, even redacted; log a non-secret id or a boolean instead"
+    metadata:
+      section: "§8"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(..., $K=$V, ...)
+          - pattern: '$LOG.$M(..., extra={..., "$K": $V, ...}, ...)'
+          - pattern: '$LOG.$M(..., **{..., "$K": $V, ...}, ...)'
+          - pattern: '$LOG.bind(..., $K=$V, ...)'
+      - metavariable-regex:
+          metavariable: $K
+          regex: '(?i)^(.*[._-])?(password|passwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|authorization|cookie|set[_-]?cookie|credentials?|token)$'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger|logging)$'
+  - id: logwarden-sensitive-key-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "§8: never log secrets or credentials, even redacted; log a non-secret id or a boolean instead"
+    metadata:
+      section: "§8"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: '$LOG.$M({..., $K: $V, ...}, ...)'
+          - pattern: '$LOG.child({..., $K: $V, ...}, ...)'
+      - metavariable-regex:
+          metavariable: $K
+          regex: '(?i)^(.*[._-])?(password|passwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|authorization|cookie|set[_-]?cookie|credentials?|token)$'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger)$'
+  - id: logwarden-sensitive-key-go
+    languages: [go]
+    severity: ERROR
+    message: "§8: never log secrets or credentials, even redacted; log a non-secret id or a boolean instead"
+    metadata:
+      section: "§8"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: $LOG.$M($MSG, ..., "$K", ...)
+                  - pattern: $LOG.With(..., "$K", ...)
+              - metavariable-regex:
+                  metavariable: $LOG
+                  regex: '(?i)^(.*\.)?(log|logger|slog)$'
+          - pattern: slog.$F("$K", ...)
+      - metavariable-regex:
+          metavariable: $K
+          regex: '(?i)^(.*[._-])?(password|passwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|authorization|cookie|set[_-]?cookie|credentials?|token)$'
+  - id: logwarden-sensitive-key-java
+    languages: [java]
+    severity: ERROR
+    message: "§8: never log secrets or credentials, even redacted; log a non-secret id or a boolean instead"
+    metadata:
+      section: "§8"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: kv("$K", ...)
+          - pattern: keyValue("$K", ...)
+          - pattern: StructuredArguments.kv("$K", ...)
+          - pattern: StructuredArguments.keyValue("$K", ...)
+          - pattern: MDC.put("$K", ...)
+          - pattern: $B.addKeyValue("$K", ...)
+      - metavariable-regex:
+          metavariable: $K
+          regex: '(?i)^(.*[._-])?(password|passwd|secret|api[_-]?key|apikey|access[_-]?key|private[_-]?key|authorization|cookie|set[_-]?cookie|credentials?|token)$'
+  - id: logwarden-banned-key-python
+    languages: [python]
+    severity: ERROR
+    message: "§2: banned synonym as a field name; use the OTel semconv name (logwarden rules adr_banned_synonym)"
+    metadata:
+      section: "§2"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(..., $K=$V, ...)
+          - pattern: '$LOG.$M(..., extra={..., "$K": $V, ...}, ...)'
+          - pattern: '$LOG.$M(..., **{..., "$K": $V, ...}, ...)'
+          - pattern: '$LOG.bind(..., $K=$V, ...)'
+      - metavariable-regex:
+          metavariable: $K
+          regex: '^(status|status_code|path|method|url|host|model|traceback|err|error|exception|uid|env|headers)$'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger|logging)$'
+  - id: logwarden-banned-key-js
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "§2: banned synonym as a field name; use the OTel semconv name (logwarden rules adr_banned_synonym)"
+    metadata:
+      section: "§2"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: '$LOG.$M({..., $K: $V, ...}, ...)'
+          - pattern: '$LOG.child({..., $K: $V, ...}, ...)'
+      - metavariable-regex:
+          metavariable: $K
+          regex: '^(status|status_code|path|method|url|host|model|traceback|err|error|exception|uid|env|headers)$'
+      - metavariable-regex:
+          metavariable: $LOG
+          regex: '(?i)^(.*\.)?_?(log|logger)$'
+  - id: logwarden-banned-key-go
+    languages: [go]
+    severity: ERROR
+    message: "§2: banned synonym as a field name; use the OTel semconv name (logwarden rules adr_banned_synonym)"
+    metadata:
+      section: "§2"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: $LOG.$M($MSG, ..., "$K", ...)
+                  - pattern: $LOG.With(..., "$K", ...)
+              - metavariable-regex:
+                  metavariable: $LOG
+                  regex: '(?i)^(.*\.)?(log|logger|slog)$'
+          - pattern: slog.$F("$K", ...)
+      - metavariable-regex:
+          metavariable: $K
+          regex: '^(status|status_code|path|method|url|host|model|traceback|err|error|exception|uid|env|headers)$'
+  - id: logwarden-banned-key-java
+    languages: [java]
+    severity: ERROR
+    message: "§2: banned synonym as a field name; use the OTel semconv name (logwarden rules adr_banned_synonym)"
+    metadata:
+      section: "§2"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    patterns:
+      - pattern-either:
+          - pattern: kv("$K", ...)
+          - pattern: keyValue("$K", ...)
+          - pattern: StructuredArguments.kv("$K", ...)
+          - pattern: StructuredArguments.keyValue("$K", ...)
+          - pattern: MDC.put("$K", ...)
+          - pattern: $B.addKeyValue("$K", ...)
+      - metavariable-regex:
+          metavariable: $K
+          regex: '^(status|status_code|path|method|url|host|model|traceback|err|error|exception|uid|env|headers)$'
+  - id: logwarden-print-python
+    languages: [python]
+    severity: WARNING
+    message: "§1: write logs through the logger, not to stdout directly: every stdout line must be a JSON log object"
+    metadata:
+      section: "§1"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    paths:
+      exclude: ["**/test/**", "**/tests/**", "**/__tests__/**", "test_*.py", "*_test.py", "*_test.go", "*.test.*", "*.spec.*", "*Test.java", "conftest.py", "**/scripts/**", "**/cli.py", "**/cmd/**"]
+    patterns:
+      - pattern: print(...)
+      - pattern-not: print(..., file=$F, ...)
+
+  - id: logwarden-print-js
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "§1: write logs through the logger, not to stdout directly: every stdout line must be a JSON log object"
+    metadata:
+      section: "§1"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    paths:
+      exclude: ["**/test/**", "**/tests/**", "**/__tests__/**", "test_*.py", "*_test.py", "*_test.go", "*.test.*", "*.spec.*", "*Test.java", "conftest.py", "**/scripts/**", "**/cli.py", "**/cmd/**"]
+    pattern-either:
+      - pattern: console.log(...)
+      - pattern: console.info(...)
+      - pattern: console.warn(...)
+      - pattern: console.error(...)
+      - pattern: console.debug(...)
+
+  - id: logwarden-print-go
+    languages: [go]
+    severity: WARNING
+    message: "§1: write logs through the logger, not to stdout directly: every stdout line must be a JSON log object"
+    metadata:
+      section: "§1"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    paths:
+      exclude: ["**/test/**", "**/tests/**", "**/__tests__/**", "test_*.py", "*_test.py", "*_test.go", "*.test.*", "*.spec.*", "*Test.java", "conftest.py", "**/scripts/**", "**/cli.py", "**/cmd/**"]
+    pattern-either:
+      - pattern: fmt.Print(...)
+      - pattern: fmt.Println(...)
+      - pattern: fmt.Printf(...)
+
+  - id: logwarden-print-java
+    languages: [java]
+    severity: WARNING
+    message: "§1: write logs through the logger, not to stdout directly: every stdout line must be a JSON log object"
+    metadata:
+      section: "§1"
+      docs: https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md
+    paths:
+      exclude: ["**/test/**", "**/tests/**", "**/__tests__/**", "test_*.py", "*_test.py", "*_test.go", "*.test.*", "*.spec.*", "*Test.java", "conftest.py", "**/scripts/**", "**/cli.py", "**/cmd/**"]
+    pattern-either:
+      - pattern: System.out.println(...)
+      - pattern: System.out.print(...)
+      - pattern: System.out.printf(...)
+      - pattern: System.err.println(...)
+      - pattern: $E.printStackTrace()

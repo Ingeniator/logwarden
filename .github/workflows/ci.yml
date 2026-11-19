@@ -76,6 +76,68 @@ jobs:
           /tmp/s/bin/python -c "from logwarden.logging import configure; configure('s','1','test').info('extra_works')" | tee /tmp/s.jsonl
           grep -q '"event": "extra_works"' /tmp/s.jsonl
 
+  recipes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: examples/recipes/go/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Node (pino), Node over OTLP, Go (slog), Java (logback) output passes the check
+        run: examples/recipes/check.sh node node-otlp go java
+      - name: Recipe source passes lint-code (Semgrep via uvx)
+        run: uv run logwarden lint-code examples/recipes
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build linux/amd64 and linux/arm64 (each build runs a check inside the image)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+      - name: Build linux/amd64 for the tests below
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: logwarden:test
+      - name: Offline check, as root and as another user
+        run: |
+          set +e
+          docker run --rm --network none -v "$PWD/examples:/work" logwarden:test check bad.jsonl --json > bad.json
+          rc=$?
+          set -e
+          [ "$rc" -eq 1 ]
+          python3 -c "import json; d=json.load(open('bad.json')); assert d['violations'] == 10, d['violations']"
+          docker run --rm --network none -v "$PWD/examples:/work" logwarden:test check good.jsonl
+          docker run --rm --network none --user 12345 -v "$PWD/examples:/work" logwarden:test check good.jsonl
+      - name: capture inside the container
+        run: |
+          mkdir -p /tmp/cap && chmod 777 /tmp/cap
+          docker run -d --name cap -p 4318:4318 -v /tmp/cap:/work logwarden:test capture --host 0.0.0.0 -o out.jsonl
+          sleep 3
+          OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://127.0.0.1:4318/v1/logs uv run python tests/data/otlp_emit.py good
+          sleep 1
+          docker stop -t 60 cap
+          docker logs cap 2>&1 | tee /tmp/cap.log
+          [ "$(docker inspect cap -f '{{.State.ExitCode}}')" = "0" ]
+          grep -q "captured 2 log records" /tmp/cap.log && grep -q "0 violations" /tmp/cap.log
+
   plugin:
     runs-on: ubuntu-latest
     steps:

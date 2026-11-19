@@ -78,7 +78,10 @@ def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None
 
 
 def cmd_check(a: argparse.Namespace) -> int:
-    text = _read_input(a.input)
+    return _check_text(_read_input(a.input), a)
+
+
+def _check_text(text: str, a: argparse.Namespace) -> int:
     fields, policy = resolve(Path.cwd(), fields=a.fields, registry=a.registry,
                              baseline=a.baseline, no_baseline=a.no_baseline)
     try:
@@ -93,6 +96,89 @@ def cmd_check(a: argparse.Namespace) -> int:
         print(output.text(result, a.max))
     if a.o:
         _err(f"full output in {a.o}")
+    return 0 if result["ok"] else 1
+
+
+_OTEL_PROTOCOLS = ("http/protobuf", "http/json")
+
+
+def _otel_env(endpoint: str) -> dict[str, str]:
+    env = dict(os.environ)
+    env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
+    env["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = endpoint + "/v1/logs"
+    env["OTEL_LOGS_EXPORTER"] = "otlp"
+    for k in ("OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"):
+        if env.get(k) not in _OTEL_PROTOCOLS:   # gRPC isn't supported by the receiver
+            env[k] = "http/protobuf"
+    return env
+
+
+def _wait_for_signal() -> None:
+    import signal
+    import threading
+    stop = threading.Event()
+    for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), lambda *_: stop.set())
+    while not stop.wait(0.5):
+        pass
+
+
+def cmd_capture(a: argparse.Namespace) -> int:
+    import shutil
+    import subprocess
+    import time
+
+    from logwarden import capture
+    command = a.command[1:] if a.command[:1] == ["--"] else a.command
+    port = a.port if a.port is not None else (0 if command else 4318)
+    out = Path(a.output)
+    try:
+        rx = capture.Receiver(out, host=a.host, port=port, log=_err).start()
+    except OSError as e:
+        raise UsageError(f"capture: can't listen on {a.host}:{port}: {e}") from e
+    rc = 0
+    try:
+        if command:
+            exe = shutil.which(command[0])
+            if not exe:
+                raise UsageError(f"capture: command not found: {command[0]}")
+            _err(f"receiving OTLP on {rx.endpoint}; running: {' '.join(command)}")
+            # The command's stdout goes to stderr: our stdout is only the result (--json stays parseable).
+            sys.stdout.flush()
+            rc = subprocess.run([exe, *command[1:]], env=_otel_env(rx.endpoint),
+                                stdout=sys.stderr.fileno()).returncode
+            time.sleep(0.3)  # let in-flight exports land
+        else:
+            _err(f"receiving OTLP/HTTP logs on {rx.endpoint}/v1/logs into {out} (Ctrl-C to stop)")
+            _wait_for_signal()
+    finally:
+        rx.stop()
+    _err(f"captured {rx.count} log records into {out}")
+    if rc:
+        _err(f"capture: command exited with {rc}")
+        return rc
+    if a.no_check:
+        return 0
+    if rx.count == 0:
+        raise UsageError("capture: no log records arrived. Enable the OpenTelemetry SDK's logs "
+                         "exporter (OTEL_LOGS_EXPORTER=otlp) with protocol http/protobuf or http/json")
+    return _check_text(out.read_text(encoding="utf-8"), a)
+
+
+def cmd_lint_code(a: argparse.Namespace) -> int:
+    from logwarden import lint
+    try:
+        unknown = set(a.exclude_rule) - lint.rule_ids()
+        if unknown:
+            raise UsageError(f"lint-code: unknown rule {', '.join(sorted(unknown))}; see 'logwarden lint-code --list'")
+        if a.list:
+            print("\n".join(sorted(lint.rule_ids())))
+            return 0
+        result = lint.run(a.paths, exclude=a.exclude_rule)
+    except lint.LintError as e:
+        raise UsageError(f"lint-code: {e}") from e
+    print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else lint.text(result, a.max))
     return 0 if result["ok"] else 1
 
 
@@ -167,8 +253,11 @@ def cmd_init(a: argparse.Namespace) -> int:
 
 
 def cmd_setup(_: argparse.Namespace) -> int:
+    """Download Weaver and the semantic conventions, so later checks work offline."""
     try:
         print(weaver.find())
+        model = weaver.semconv_model(weaver.semconv_version(data.path("registry") / "manifest.yaml"))
+        _err(f"semantic conventions: {model}")
     except weaver.WeaverError as e:
         raise UsageError(str(e)) from e
     return 0
@@ -212,6 +301,34 @@ def parser() -> argparse.ArgumentParser:
     b.add_argument("--registry", help="full Weaver registry overlay (as for check)")
     b.set_defaults(fn=cmd_baseline)
 
+    cap = sub.add_parser("capture", help="receive logs over OTLP/HTTP, write them as JSON lines, then check them",
+                         description="Receive OTLP/HTTP logs (protobuf or JSON) and write them as JSON "
+                                     "lines. With a command: run it with OTEL_* pointing here, then check. "
+                                     "Without: receive until Ctrl-C or SIGTERM, then check.")
+    cap.add_argument("-o", "--output", default="logwarden-capture.jsonl",
+                     help="where to write the lines (default: logwarden-capture.jsonl)")
+    cap.add_argument("--host", default="127.0.0.1", help="listen address (0.0.0.0 in a container)")
+    cap.add_argument("--port", type=int, help="listen port (default 4318; a free port when running a command)")
+    cap.add_argument("--no-check", action="store_true", help="only write the lines")
+    cap.add_argument("--json", action="store_true", help="machine-readable check result")
+    cap.add_argument("--fields", help="project-only fields file (as for check)")
+    cap.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
+    cap.add_argument("--baseline", metavar="FILE", help="as for check")
+    cap.add_argument("--no-baseline", action="store_true", help="as for check")
+    cap.add_argument("command", nargs=argparse.REMAINDER, help="-- command to run, e.g. -- npm test")
+    cap.set_defaults(fn=cmd_capture, registry=None, o=None)
+
+    lc = sub.add_parser("lint-code", help="check source code with logwarden's Semgrep rules (needs semgrep)",
+                        description="Run logwarden's Semgrep rules (Python, JavaScript/TypeScript, Go, Java) "
+                                    "on source code.")
+    lc.add_argument("paths", nargs="*", help="files or directories (default: .)")
+    lc.add_argument("--json", action="store_true", help="machine-readable result")
+    lc.add_argument("--max", type=int, default=50, help="findings shown in text output (default 50)")
+    lc.add_argument("--exclude-rule", action="append", default=[], metavar="ID",
+                    help="skip a rule, e.g. logwarden-print-python (repeatable)")
+    lc.add_argument("--list", action="store_true", help="list the rule ids")
+    lc.set_defaults(fn=cmd_lint_code)
+
     r = sub.add_parser("rules", help="list rules, or explain one")
     r.add_argument("rule_id", nargs="?")
     r.set_defaults(fn=cmd_rules)
@@ -221,7 +338,7 @@ def parser() -> argparse.ArgumentParser:
     i.add_argument("--agent", action="store_true", help="also add a logwarden section to AGENTS.md")
     i.set_defaults(fn=cmd_init)
 
-    s = sub.add_parser("setup", help="download weaver if missing and print its path")
+    s = sub.add_parser("setup", help="download weaver and the semantic conventions if missing; print weaver's path")
     s.set_defaults(fn=cmd_setup)
     m = sub.add_parser("mcp", help="run the MCP server on stdio (needs logwarden[mcp])")
     m.set_defaults(fn=cmd_mcp)

@@ -14,8 +14,23 @@ uvx logwarden check logs.jsonl  # or no install at all (needs uv)
 logwarden init --agent          # logwarden-fields.yaml + a logwarden section in AGENTS.md
 ```
 
-Weaver, which does the actual checking, is downloaded on first run into the user cache
-directory. Set `WEAVER` to use your own binary.
+Weaver, which does the actual checking, and the OpenTelemetry semantic conventions are
+downloaded on first run into the user cache directory (`logwarden setup` does it ahead of
+time). After that, checks work offline. Set `WEAVER` to use your own binary.
+
+**No Python on the machine?** Use the Docker image, which has Weaver and the semantic
+conventions inside:
+
+```bash
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 check logs.jsonl
+```
+
+## Node, Go, Java: setup recipes
+
+Logger configuration whose output passes the check, each with a runnable example that CI
+checks: [Node (pino)](recipes/node.md), [Go (`log/slog`)](recipes/go.md),
+[Java (logback)](recipes/java.md). Other languages: write one JSON object per line with the
+fields in §3 of the standard, or send logs over OTLP (below).
 
 ## Python: make compliant logs the default
 
@@ -82,19 +97,36 @@ docker compose logs --no-log-prefix --no-color myservice > logs.jsonl
 `./my-service 2>&1 | logwarden check -`. Every non-blank line must be a JSON object
 (`adr_non_json_line`), so capture only the service's output, not a test runner's.
 
+**Any language with an OpenTelemetry SDK: capture over OTLP.** `logwarden capture` is an
+OTLP/HTTP receiver. It writes each log record as a JSON line (resource attributes merged in,
+`event` from the event name or string body, `level` from the severity, `logger` from the
+instrumentation scope) and then runs the same check:
+
+```bash
+logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
+logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 capture --host 0.0.0.0
+```
+
+With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
+protocol `http/protobuf` (gRPC isn't supported; an existing `http/json` setting is kept).
+The exit code is the command's if it failed, otherwise the check's. The command's own stdout
+goes to stderr, so `--json` output stays parseable. Traces and metrics sent to the same
+endpoint are accepted and ignored.
+
 ## 3. Check in CI
 
 GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.5.0
+- uses: Ingeniator/logwarden@v0.6.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.5.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.6.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -168,6 +200,29 @@ and not to rewrite unrelated legacy logging unless asked.
 logwarden checks the logs a run produces, so it only sees code paths that ran. A source
 linter catches some of the same mistakes in every file, before anything runs. Run both:
 the linter in your normal lint step, and logwarden on the captured logs.
+
+**Any language: `logwarden lint-code`** runs logwarden's [Semgrep](https://semgrep.dev)
+rules on Python, JavaScript/TypeScript, Go and Java:
+
+```bash
+logwarden lint-code src/                     # exit 0 clean, 1 findings, 2 setup error
+logwarden lint-code --json src/              # for CI tools and agents
+logwarden lint-code --exclude-rule logwarden-print-python src/
+```
+
+| Rule (one per language: `-python`, `-js`, `-go`, `-java`) | Catches | Runtime rule it prevents |
+|---|---|---|
+| `logwarden-event-name-*` | a formatted or non-snake_case log message (`f"..."`, `%`, `.format`, `+`, template literal, `fmt.Sprintf`, `String.format`, `"Imported {} rows"`) | `adr_event_name` |
+| `logwarden-sensitive-key-*` | a field named like `password`, `token`, `api_key` | `adr_sensitive_data` |
+| `logwarden-banned-key-*` | a banned synonym as a field name (`error=`, `"err"`, `kv("status", ...)`) | `adr_banned_synonym` |
+| `logwarden-print-*` | `print`, `console.log`, `fmt.Println`, `System.out.println` (warning; skips tests, scripts and `cli.py`) | `adr_non_json_line` |
+
+Semgrep isn't a dependency of logwarden (it pins its own OpenTelemetry and `mcp` versions).
+`lint-code` uses `semgrep` from `PATH`, or runs it with `uvx` in its own environment when uv
+is installed. Semgrep has no native Windows build; use WSL or the Docker image. Like
+Semgrep, `lint-code` skips `tests/` directories.
+
+The linters below cover more cases for one language each, and fit an existing lint setup.
 
 **Python: Ruff.** It works for stdlib `logging` and for structlog loggers such as
 `log = structlog.get_logger()`.

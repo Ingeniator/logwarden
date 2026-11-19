@@ -1,0 +1,11 @@
+groups:
+  - id: registry.recipe.log
+    type: attribute_group
+    display_name: recipe log fields
+    brief: Domain fields the recipe examples log.
+    attributes:
+      - id: order_id
+        type: int
+        stability: development
+        brief: Order id.
+        examples: [42]
