@@ -84,5 +84,12 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Source checks: Semgrep rules and `logwarden lint-code`. (The Ruff and sloglint config has
   been recommended in `docs/integration.md` §6 since 2026-11-18.)
 
+### M5 (v0.7.0): review what a change does to the logs
+- Snapshots and `check --compare` against the base branch: new and fixed findings, new event names.
+- Self-contained HTML report (`--html`) and Markdown summary (`--markdown`).
+- GitHub Action: base snapshot through the Actions cache, one PR comment updated on each push, report artifact.
+- Event catalog: `logwarden catalog`, a committed `logwarden-events.toml`, and the rule
+  `adr_event_catalog` when it is configured.
+
 ### Later
-HTML report, with a diff against the base branch · PR comment with new/fixed counts · event-name catalog.
+Nothing planned yet.
