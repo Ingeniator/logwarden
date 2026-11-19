@@ -56,7 +56,7 @@ Other languages and Docker:
 
 ```bash
 logwarden capture -o logs.jsonl -- npm test   # receive logs over OTLP while the command runs, then check
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 check logs.jsonl   # no Python needed
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.7.0 check logs.jsonl   # no Python needed
 ```
 
 Setup recipes whose output passes: [Node (pino)](https://github.com/Ingeniator/logwarden/blob/main/docs/recipes/node.md),
@@ -72,7 +72,7 @@ log = configure(service_name="billing-api", service_version="1.4.2", environment
 
 ```yaml
 # CI: on pull requests, compares with the base branch and comments new/fixed counts
-- uses: Ingeniator/logwarden@v0.6.0
+- uses: Ingeniator/logwarden@v0.7.0
   with:
     logs: logs.jsonl
     comment: "true"             # needs permissions: pull-requests: write

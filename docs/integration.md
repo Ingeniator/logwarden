@@ -22,7 +22,7 @@ time). After that, checks work offline. Set `WEAVER` to use your own binary.
 conventions inside:
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 check logs.jsonl
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.7.0 check logs.jsonl
 ```
 
 ## Node, Go, Java: setup recipes
@@ -105,7 +105,7 @@ instrumentation scope) and then runs the same check:
 ```bash
 logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
 logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
-docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.6.0 capture --host 0.0.0.0
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.7.0 capture --host 0.0.0.0
 ```
 
 With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
@@ -120,13 +120,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.6.0
+- uses: Ingeniator/logwarden@v0.7.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.6.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.7.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -172,7 +172,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.6.0
+  - uses: Ingeniator/logwarden@v0.7.0
     with:
       logs: logs.jsonl
       comment: "true"
@@ -197,7 +197,7 @@ GitLab CI, keeping the target branch's snapshot as an artifact:
 logwarden:
   image: python:3.13
   script:
-    - pip install --quiet logwarden==0.6.0
+    - pip install --quiet logwarden==0.7.0
     - LOGWARDEN_CAPTURE=logs.jsonl pytest      # or however the job produces logs.jsonl
     - |
       COMPARE=""
