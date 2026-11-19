@@ -4,6 +4,7 @@ Full release notes, each with a verification table, are in [docs/releases/](docs
 
 | Version | Status | Summary |
 |---|---|---|
+| [v0.8.0](docs/releases/v0.8.0.md) | Planned | `logwarden watch` on Kafka/HTTP/OTLP with Prometheus and Kibana outputs, SARIF, pre-commit hook, pin updates |
 | [v0.7.0](docs/releases/v0.7.0.md) | Released 2026-11-19 | Compare with the base branch, HTML report, PR comment, event catalog and `adr_event_catalog` |
 | [v0.6.0](docs/releases/v0.6.0.md) | Released 2026-11-19 | Any language: OTLP capture, Docker image, Node/Go/Java recipes, `lint-code` with Semgrep |
 | [v0.5.0](docs/releases/v0.5.0.md) | Released 2026-11-18 | `logwarden.logging.configure()`, error and test helpers, upstream failure coverage |

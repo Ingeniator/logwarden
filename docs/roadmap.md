@@ -91,5 +91,15 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Event catalog: `logwarden catalog`, a committed `logwarden-events.toml`, and the rule
   `adr_event_catalog` when it is configured.
 
+### M6 (v0.8.0): production logs and findings on the source line
+- `logwarden watch`: a long-running check of the live stream. Sources: Kafka (its own consumer
+  group on the topic Fluent writes to), HTTP (Fluent Bit / Fluentd output), OTLP, stdin.
+  `[source]` unwraps records that the pipeline wrapped.
+- Prometheus metrics with a Grafana dashboard; findings as JSON lines that reach Elasticsearch
+  through Fluent, with Kibana saved objects; a Kafka + Fluent Bit demo compose.
+- SARIF from `check` (callsite fields from `configure(callsite=True)`) and `lint-code`; the
+  Action uploads it to code scanning.
+- pre-commit hook for `lint-code`; weekly workflow that opens a PR for new Weaver/semconv pins.
+
 ### Later
 Nothing planned yet.
