@@ -9,8 +9,10 @@ log = configure(service_name="orders-api", service_version="1.0.0", environment=
 
 
 def create_order(order_id: int) -> None:
+    # PR test: this comment moves the calls below down one line
     log.info("order_created", **{"order.id": order_id})
     log.info("order_paid", status=200)          # known finding: banned synonym
+    log.info("Shipping order now", http_route="/orders")   # PR test: two new findings
 
 
 if __name__ == "__main__":
