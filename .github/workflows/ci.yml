@@ -28,6 +28,19 @@ jobs:
       - name: Tests (includes real weaver runs)
         run: uv run --python ${{ matrix.python }} pytest -q -ra
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tests under coverage (includes CLI and MCP subprocesses)
+        run: uv run --python 3.13 coverage run -m pytest -q
+      - name: Report (fails under 85%, see [tool.coverage.report])
+        run: |
+          uv run coverage combine -q
+          uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage report
+
   action:
     runs-on: ubuntu-latest
     steps:

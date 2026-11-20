@@ -43,6 +43,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 
 ```bash
 uv run pytest -q                    # all tests (real Weaver runs; downloads it on first use)
+uv run coverage run -m pytest -q && uv run coverage combine && uv run coverage report   # CI fails under 85%
 uv run logwarden check examples/bad.jsonl
 uv build                            # wheel + sdist
 make validate-plugin                # claude plugin validate --strict for marketplace + plugin

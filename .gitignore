@@ -12,3 +12,6 @@ examples/recipes/*/logs.jsonl
 examples/recipes/*/otlp.jsonl
 logwarden-capture.jsonl
 site/
+.coverage
+.coverage.*
+htmlcov/

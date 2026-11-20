@@ -1,6 +1,7 @@
 """v0.3.0 claim 7: `logwarden mcp` works with the [mcp] extra and fails clearly without it."""
 import asyncio
 import json
+import os
 import subprocess
 import sys
 
@@ -32,7 +33,7 @@ def test_stdio_tools(tmp_path):
 
     async def go():
         params = StdioServerParameters(command=sys.executable, args=["-m", "logwarden", "mcp"],
-                                       cwd=str(tmp_path))
+                                       cwd=str(tmp_path), env=dict(os.environ))   # keeps coverage on
         async with stdio_client(params) as (r, w), ClientSession(r, w) as s:
             await s.initialize()
             names = {t.name for t in (await s.list_tools()).tools}
