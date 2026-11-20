@@ -65,6 +65,17 @@ def _fingerprint(*parts) -> str:
     return hashlib.sha256("\x1f".join("" if p is None else str(p) for p in parts).encode("utf-8")).hexdigest()
 
 
+def _fingerprints(seen: dict[str, int], *parts) -> dict:
+    """Stable across commits: no line numbers, so an alert follows its log call when code moves.
+
+    primaryLocationLineHash is set too, or upload-sarif computes one from the code around the
+    line, and an unrelated edit next to the call would then look like a new alert.
+    """
+    h = _fingerprint(*parts)
+    seen[h] = seen.get(h, 0) + 1
+    return {"logwarden/v1": h, "primaryLocationLineHash": f"{h[:16]}:{seen[h]}"}
+
+
 def _doc(rules: list[dict], results: list[dict], name: str) -> dict:
     return {"$schema": SCHEMA, "version": "2.1.0", "runs": [{
         "tool": {"driver": {"name": name, "version": __version__, "informationUri": INFO_URI,
@@ -79,7 +90,8 @@ def from_check(violations: list[dict], log_path: str | None = None, source_root:
     ids = sorted({v["rule"] for v in violations}, key=str)
     index = {r: i for i, r in enumerate(ids)}
     log_uri = uri(log_path, None) if log_path else None
-    results = []
+    results: list[dict] = []
+    seen: dict[str, int] = {}
     for v in violations:
         text = v["message"] or v["rule"]
         if v.get("line") is not None:
@@ -87,17 +99,17 @@ def from_check(violations: list[dict], log_path: str | None = None, source_root:
         loc = v.get("loc")
         if loc:
             locations = [_location(uri(loc[0], source_root), loc[1])]
-            where = (loc[0], loc[1])
+            where = (uri(loc[0], source_root), loc[2])     # file and function, not the line
         elif log_uri:
             # Search hits have no line in the file; code scanning needs a line, so use the first.
             locations = [_location(log_uri, v.get("file_line") or 1)]
-            where = (log_uri, v.get("line"))
+            where = (log_uri, None)
         else:
-            locations, where = [], (None, v.get("line"))
+            locations, where = [], (None, None)
         res = {"ruleId": v["rule"], "ruleIndex": index[v["rule"]], "level": "error",
                "message": {"text": text}, "locations": locations,
-               "partialFingerprints": {"logwarden/v1": _fingerprint(
-                   v["rule"], v.get("field"), v.get("logger"), v.get("fp_event"), *where)}}
+               "partialFingerprints": _fingerprints(seen, v["rule"], v.get("field"), v.get("logger"),
+                                                    v.get("fp_event"), *where)}
         if loc and loc[2]:
             res["locations"][0]["logicalLocations"] = [{"fullyQualifiedName": loc[2], "kind": "function"}]
         results.append(res)
@@ -113,12 +125,13 @@ def from_lint(result: dict) -> dict:
     for f in findings:
         first.setdefault(f["rule"], f["message"])
     help_uri = report.doc_url(LINT_DOC)
+    seen: dict[str, int] = {}
     rules = [{"id": r, "name": r, "shortDescription": {"text": first[r].split("\n")[0][:200]},
               "helpUri": help_uri, "defaultConfiguration": {"level": "error"},
               "properties": {"tags": ["logging"]}} for r in ids]
     results = [{"ruleId": f["rule"], "ruleIndex": index[f["rule"]], "level": "error",
                 "message": {"text": f["message"]},
                 "locations": [_location(uri(f["path"]), f["line"])],
-                "partialFingerprints": {"logwarden/v1": _fingerprint(f["rule"], f["path"], f.get("code"))}}
+                "partialFingerprints": _fingerprints(seen, f["rule"], uri(f["path"]), (f.get("code") or "").strip())}
                for f in findings]
     return _doc(rules, results, "logwarden lint-code")

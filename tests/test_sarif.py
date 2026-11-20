@@ -137,3 +137,18 @@ def test_claim1_pytest_plugin_turns_callsite_on(pytester, monkeypatch, tmp_path)
     line = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
     assert line["code.file.path"] == "test_claim1_pytest_plugin_turns_callsite_on.py"
     assert line["code.line.number"] == 4
+
+
+def test_claim1_fingerprints_survive_moved_lines(tmp_path):
+    def sarif(line_no, name):
+        (tmp_path / f"{name}.jsonl").write_text(
+            _line(status=200, **{"code.file.path": "app.py", "code.line.number": line_no,
+                                 "code.function.name": "app.create"})
+            + _line(status=500, **{"code.file.path": "app.py", "code.line.number": line_no + 5,
+                                   "code.function.name": "app.create"}), encoding="utf-8")
+        run_cli("check", f"{name}.jsonl", "--sarif", f"{name}.sarif", cwd=tmp_path)
+        doc = json.loads((tmp_path / f"{name}.sarif").read_text(encoding="utf-8"))
+        return [r["partialFingerprints"] for r in doc["runs"][0]["results"]]
+    before, after = sarif(10, "before"), sarif(30, "after")
+    assert before == after                                    # same alerts after the code moved
+    assert before[0]["primaryLocationLineHash"] != before[1]["primaryLocationLineHash"]   # two calls, two alerts
