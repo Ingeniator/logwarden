@@ -4,6 +4,9 @@ Installed via pip, the plugin loads automatically and does nothing unless
 LOGWARDEN_CAPTURE is set:  LOGWARDEN_CAPTURE=logs.jsonl pytest
 Then:  logwarden check logs.jsonl
 
+While capturing it also sets LOGWARDEN_CALLSITE=1 (unless set), so logwarden.logging.configure()
+adds where each line was logged (code.file.path, code.line.number) for `check --sarif`.
+
 LOGWARDEN_LEVEL (default INFO) is the lowest level captured. The root logger is
 lowered to it if needed, because under pytest an app's logging.basicConfig() is
 often a no-op (pytest already installed handlers) and the level stays WARNING.
@@ -14,6 +17,11 @@ import os
 import pytest
 
 _handler = None
+
+
+def pytest_configure(config):
+    if os.getenv("LOGWARDEN_CAPTURE"):
+        os.environ.setdefault("LOGWARDEN_CALLSITE", "1")
 
 
 def _service_formatter():

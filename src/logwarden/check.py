@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from logwarden import __version__, data, weaver
+from logwarden import __version__, data, sources, weaver
 
 MAX_FINDINGS = 500
 _SEVERITY = {"debug": 5, "info": 9, "warning": 13, "warn": 13, "error": 17, "critical": 21, "fatal": 21}
@@ -33,8 +33,11 @@ class CheckError(RuntimeError):
 
 @dataclass
 class Record:
-    line: int
+    line: int                  # line, CSV row or search hit number
     obj: dict
+    id: str | None = None      # Elasticsearch _id, when the export has it
+    service: str = sources.NO_SERVICE
+    file_line: int | None = None
 
 
 @dataclass
@@ -42,27 +45,41 @@ class BadLine:
     line: int
     kind: str      # "plain text", "JSON array", ...
     text: str      # only hashed into the baseline fingerprint, never printed
+    id: str | None = None
+    service: str = sources.NO_SERVICE
+    file_line: int | None = None
+
+
+@dataclass
+class Input:
+    records: list[Record]
+    bad: list[BadLine]
+    total: int
+    format: str = "jsonl"
+    missing_columns: list[str] = field(default_factory=list)
+
+
+def read(text: str, src: sources.Source | None = None, types=dict) -> Input:
+    """Records and non-object lines of `text` in any supported format. Raises CheckError."""
+    src = src or sources.Source()
+    try:
+        loaded = sources.load(text, src, types)
+    except sources.SourceError as e:
+        raise CheckError(str(e)) from e
+    records, bad = [], []
+    for i in loaded.items:
+        svc = sources.service_of(i, src)
+        if i.obj is not None:
+            records.append(Record(i.n, i.obj, i.id, svc, i.file_line))
+        else:
+            bad.append(BadLine(i.n, i.kind, i.text or "", i.id, svc, i.file_line))
+    return Input(records, bad, loaded.total, loaded.format, loaded.missing_columns)
 
 
 def parse(text: str) -> tuple[list[Record], list[BadLine], int]:
     """JSON objects and non-blank non-object lines, with 1-based line numbers, and the total."""
-    # Split on "\n" only, like `jq -R` (str.splitlines also splits on \x0b, \u2028, ...).
-    lines = text.split("\n")
-    if lines and lines[-1] == "":
-        lines.pop()
-    records, bad = [], []
-    for n, raw in enumerate(lines, start=1):
-        try:
-            obj = json.loads(raw)
-        except ValueError:
-            if raw.strip():
-                bad.append(BadLine(n, "plain text", raw))
-            continue
-        if isinstance(obj, dict):
-            records.append(Record(n, obj))
-        else:
-            bad.append(BadLine(n, _json_kind(obj), raw))
-    return records, bad, len(lines)
+    inp = read(text, sources.Source(format="jsonl"))
+    return inp.records, inp.bad, inp.total
 
 
 def _json_kind(v: Any) -> str:
@@ -153,6 +170,7 @@ class Policy:
     upstreams: list[str] = field(default_factory=list)
     events: dict | None = None          # the event catalog's events, when configured
     events_path: str | None = None
+    source: sources.Source = field(default_factory=sources.Source)
 
 
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -212,8 +230,35 @@ def catalog_findings(records: list[Record], events: dict | None, path: str | Non
 
 def collect(live_check: dict, records: list[Record], bad: list[BadLine],
             upstreams: list[str] | None = None, events: dict | None = None,
-            events_path: str | None = None) -> list[dict]:
+            events_path: str | None = None, missing_columns: list[str] | None = None) -> list[dict]:
     """Every finding: Weaver's (per sample) plus logwarden's own line and run rules."""
+    found = _collect(live_check, records, bad, upstreams, events, events_path)
+    absent = set(missing_columns or [])
+    by_line = {r.line: r for r in records}
+    by_line_bad = {b.line: b for b in bad}
+    for f in found:
+        src = by_line.get(f["line"]) or by_line_bad.get(f["line"])
+        f["service"] = src.service if src else None
+        f["id"] = src.id if src else None
+        f["file_line"] = src.file_line if src else None
+        f["loc"] = code_location(src.obj) if isinstance(src, Record) else None
+    # A field the export left out may well be in the log; don't report it as missing.
+    return [f for f in found if not (f["rule"] == "adr_missing_required" and f["field"] in absent)]
+
+
+def code_location(obj: dict) -> tuple[str, int | None, str | None] | None:
+    """Where the line was logged: code.file.path / code.line.number (or the older names)."""
+    path = obj.get("code.file.path", obj.get("code.filepath"))
+    if not isinstance(path, str) or not path:
+        return None
+    line = obj.get("code.line.number", obj.get("code.lineno"))
+    func = obj.get("code.function.name", obj.get("code.function"))
+    return (path, line if isinstance(line, int) and not isinstance(line, bool) and line > 0 else None,
+            func if isinstance(func, str) else None)
+
+
+def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
+             upstreams: list[str] | None, events: dict | None, events_path: str | None) -> list[dict]:
     found = []
     for i, sample in enumerate(live_check.get("samples") or []):
         log = sample.get("log") or {}
@@ -265,10 +310,18 @@ def violations_of(found: list[dict]) -> list[dict]:
             and not (f["rule"] == "missing_attribute" and (f["line"], f["field"]) in named)]
 
 
-def summarise(found: list[dict], n_records: int, total_lines: int, policy: Policy | None = None) -> dict:
-    """All findings -> logwarden result, after `disable` and the baseline."""
+@dataclass
+class Outcome:
+    """Findings after `disable` and the baseline."""
+    kept: list[dict]            # not disabled (violations and advice)
+    violations: list[dict]      # what fails the run
+    off: dict[str, int]         # disabled rule -> violations not counted
+    baselined: int = 0
+    fixed: int = 0
+
+
+def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
     policy = policy or Policy()
-    rules = data.rules()
     off = {r: 0 for r in policy.disabled}
     kept = []
     for f in found:
@@ -287,6 +340,44 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         baselined = len(violations) - len(new)
         fixed = len(known - seen)
         violations = new
+    return Outcome(kept, violations, off, baselined, fixed)
+
+
+def by_service(violations: list[dict], lines: dict[str, int]) -> list[dict]:
+    """Per service: lines, violations by rule, lines with a violation and the compliance %."""
+    out = []
+    for svc in sorted(lines):
+        vs = [v for v in violations if v.get("service") == svc and v["line"] is not None]
+        rules: dict[str, int] = {}
+        for v in vs:
+            rules[v["rule"]] = rules.get(v["rule"], 0) + 1
+        bad_lines = len({v["line"] for v in vs})
+        n = lines[svc]
+        out.append({
+            "service": svc, "lines": n, "violations": len(vs), "lines_with_violations": bad_lines,
+            "compliance": round(100.0 * (n - bad_lines) / n, 1) if n else 100.0,
+            "by_rule": dict(sorted(rules.items(), key=lambda kv: (-kv[1], kv[0]))),
+            "top_rule": min(rules, key=lambda r: (-rules[r], r)) if rules else None,
+        })
+    out.sort(key=lambda s: (-s["violations"], s["service"]))
+    return out
+
+
+def _finding(f: dict) -> dict:
+    out = {k: f[k] for k in ("line", "event", "rule", "field", "message")}
+    out["service"] = f.get("service")
+    if f.get("id"):
+        out["id"] = f["id"]
+    return out
+
+
+def summarise(found: list[dict], n_records: int, total_lines: int, policy: Policy | None = None,
+              lines: dict[str, int] | None = None, inp: Input | None = None) -> dict:
+    """All findings -> logwarden result, after `disable` and the baseline."""
+    policy = policy or Policy()
+    rules = data.rules()
+    o = apply_policy(found, policy)
+    kept, violations, off, baselined, fixed = o.kept, o.violations, o.off, o.baselined, o.fixed
 
     by_rule = []
     for rule in sorted({v["rule"] for v in violations}, key=str):
@@ -311,14 +402,16 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         "skipped_lines": total_lines - n_records,
         "violations": len(violations),
         "by_rule": by_rule,
-        "findings": [{k: f[k] for k in ("line", "event", "rule", "field", "message")}
-                     for f in violations[:MAX_FINDINGS]],
+        "findings": [_finding(f) for f in violations[:MAX_FINDINGS]],
         "findings_truncated": len(violations) > MAX_FINDINGS,
         "advice": advice,
         "baseline": policy.baseline_path,
         "baselined": baselined,
         "baseline_fixed": fixed,
         "disabled": [{"rule": r, "reason": policy.disabled[r], "count": off[r]} for r in sorted(off)],
+        "services": by_service(violations, lines or {}),
+        "input": {"format": inp.format if inp else "jsonl",
+                  "missing_columns": inp.missing_columns if inp else []},
     }
 
 
@@ -386,13 +479,36 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
              out: Path | None = None, upstreams: list[str] | None = None,
              policy: Policy | None = None) -> tuple[list[dict], int, int]:
     """Run Weaver on log text: (all findings, JSON records, total lines). Raises CheckError."""
-    found, records, total = _evaluate(text, fields=fields, registry=registry, out=out,
-                                      upstreams=upstreams, policy=policy)
-    return found, len(records), total
+    found, inp = _evaluate(text, fields=fields, registry=registry, out=out,
+                           upstreams=upstreams, policy=policy)
+    return found, len(inp.records), inp.total
+
+
+def registry_types(binary: str, registry: Path) -> dict[str, str]:
+    """Attribute name -> int, double, boolean or string, from the resolved registry (for CSV)."""
+    proc = subprocess.run([binary, "registry", "resolve", "-r", str(registry), "--include-unreferenced",
+                           "--format", "json", "--skip-policies", "--quiet"],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        groups = json.loads(proc.stdout).get("groups") or []
+    except ValueError as e:
+        raise CheckError("weaver couldn't resolve the registry for CSV value types\n"
+                         + proc.stderr[-2000:]) from e
+    types: dict[str, str] = {}
+    for g in groups:
+        for a in g.get("attributes") or []:
+            typ = a.get("type")
+            if isinstance(typ, dict):   # enum: typed by its members' values
+                vals = [m.get("value") for m in typ.get("members") or []]
+                typ = ("int" if vals and all(isinstance(v, int) and not isinstance(v, bool) for v in vals)
+                       else "double" if vals and all(isinstance(v, (int, float)) for v in vals) else "string")
+            if isinstance(typ, str) and isinstance(a.get("name"), str):
+                types.setdefault(a["name"], typ)
+    return types
 
 
 def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Path | None,
-              upstreams: list[str] | None, policy: Policy | None) -> tuple[list[dict], list[Record], int]:
+              upstreams: list[str] | None, policy: Policy | None) -> tuple[list[dict], Input]:
     if fields and registry:
         raise CheckError("use fields or registry, not both")
     if fields and not fields.is_file():
@@ -402,7 +518,6 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
     except weaver.WeaverError as e:
         raise CheckError(str(e)) from e
 
-    records, bad, total = parse(text)
     with tempfile.TemporaryDirectory(prefix="logwarden-") as tmp:
         work = out or Path(tmp)
         work.mkdir(parents=True, exist_ok=True)
@@ -412,6 +527,9 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
             except weaver.WeaverError as e:
                 raise CheckError(str(e)) from e
             registry = _fields_registry(fields, Path(tmp) / "registry", base) if fields else base
+        reg = registry
+        inp = read(text, policy.source if policy else None, lambda: registry_types(binary, reg))
+        records, bad = inp.records, inp.bad
         samples = work / "samples.json"
         samples.write_text(json.dumps([to_sample(r.obj) for r in records], ensure_ascii=False),
                            encoding="utf-8")
@@ -437,8 +555,9 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
                              + "\n".join(errors or log.splitlines()[-20:]))
         found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad, upstreams,
                         events=policy.events if policy else None,
-                        events_path=policy.events_path if policy else None)
-    return found, records, total
+                        events_path=policy.events_path if policy else None,
+                        missing_columns=inp.missing_columns)
+    return found, inp
 
 
 @dataclass
@@ -446,6 +565,7 @@ class Analysis:
     result: dict
     snapshot: dict
     events: dict          # catalog.collect() of the run
+    violations: list[dict] = field(default_factory=list)   # after disable/baseline, all of them
 
 
 def analyse(text: str, *, fields: Path | None = None, registry: Path | None = None,
@@ -454,9 +574,13 @@ def analyse(text: str, *, fields: Path | None = None, registry: Path | None = No
     """Check log text, plus the run's snapshot and events (and the comparison with `compare`)."""
     from logwarden import catalog
     policy = policy or Policy()
-    found, records, total = _evaluate(text, fields=fields, registry=registry, out=out,
-                                      upstreams=policy.upstreams, policy=policy)
-    result = summarise(found, len(records), total, policy)
+    found, inp = _evaluate(text, fields=fields, registry=registry, out=out,
+                           upstreams=policy.upstreams, policy=policy)
+    records = inp.records
+    lines: dict[str, int] = {}
+    for r in [*inp.records, *inp.bad]:
+        lines[r.service] = lines.get(r.service, 0) + 1
+    result = summarise(found, len(records), inp.total, policy, lines, inp)
     events = catalog.collect(records)
     snap = make_snapshot(found, policy, events)
     if compare is not None:
@@ -464,7 +588,7 @@ def analyse(text: str, *, fields: Path | None = None, registry: Path | None = No
     if out:
         (out / "result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False),
                                          encoding="utf-8")
-    return Analysis(result, snap, events)
+    return Analysis(result, snap, events, apply_policy(found, policy).violations)
 
 
 def run(text: str, *, fields: Path | None = None, registry: Path | None = None,
@@ -514,8 +638,7 @@ def compare_with(found: list[dict], policy: Policy, events: dict, base: dict,
         "new": len(new),
         "fixed": len(fixed),
         "unchanged": len(set(first) & set(known)),
-        "new_findings": [{k: f[k] for k in ("line", "event", "rule", "field", "message")}
-                         for f in new[:MAX_FINDINGS]],
+        "new_findings": [_finding(f) for f in new[:MAX_FINDINGS]],
         "fixed_entries": fixed[:MAX_FINDINGS],
         "new_events": None if base_events is None else sorted(set(events) - set(base_events)),
         "gone_events": None if base_events is None else sorted(set(base_events) - set(events)),

@@ -1,0 +1,9 @@
+groups:
+  - id: registry.sarif_demo
+    type: attribute_group
+    brief: Fields of the SARIF demo service.
+    attributes:
+      - id: order.id
+        type: int
+        brief: The order.
+        stability: development

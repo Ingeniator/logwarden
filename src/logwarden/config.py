@@ -13,7 +13,8 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams", "events"}
+KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams", "events", "source"}
+SOURCE_KEYS = {"format", "message_field", "ignore_fields", "service_field"}
 DEFAULT_FIELDS = "logwarden-fields.yaml"
 DEFAULT_BASELINE = ".logwarden-baseline.json"
 
@@ -25,6 +26,7 @@ class Config:
     events: str | None = None           # event catalog file (TOML)
     disable: dict[str, str] = field(default_factory=dict)
     upstreams: list[str] = field(default_factory=list)
+    input: dict = field(default_factory=dict)   # [source]: format, message_field, ignore_fields, service_field
     source: str | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)   # fatal: exit 2
@@ -61,7 +63,34 @@ def load(cwd: Path) -> Config:
         else:
             cfg.errors.append(f'{cfg.source}: \'upstreams\' must be a list of host names, '
                               'e.g. upstreams = ["api.openai.com"]')
+    if "source" in data:
+        _source(data["source"], cfg)
     return cfg
+
+
+def _source(value, cfg: Config) -> None:
+    from logwarden.sources import FORMATS
+    where = f"{cfg.source}: [source]"
+    if not isinstance(value, dict):
+        cfg.errors.append(f"{where} must be a table, e.g. [source] message_field = \"log\"")
+        return
+    for key in sorted(set(value) - SOURCE_KEYS):
+        cfg.warnings.append(f"{where}: unknown key '{key}' (known: {', '.join(sorted(SOURCE_KEYS))})")
+    for key in ("message_field", "service_field", "format"):
+        if key in value:
+            if isinstance(value[key], str) and value[key].strip():
+                cfg.input[key] = value[key].strip()
+            else:
+                cfg.errors.append(f"{where}: '{key}' must be a non-empty string")
+    if cfg.input.get("format", "auto") not in FORMATS:
+        cfg.errors.append(f"{where}: format must be one of {', '.join(FORMATS)}")
+    if "ignore_fields" in value:
+        v = value["ignore_fields"]
+        if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
+            cfg.input["ignore_fields"] = [x.strip() for x in v]
+        else:
+            cfg.errors.append(f'{where}: \'ignore_fields\' must be a list of field names, '
+                              'e.g. ignore_fields = ["kubernetes", "@timestamp"]')
 
 
 def _disable(value, cfg: Config) -> None:

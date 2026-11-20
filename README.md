@@ -81,6 +81,8 @@ CI, scripts and AI agents can rely on it.
   before they're written.
 - **Adoption without a big bang.** A baseline records today's findings, so CI fails only on
   new ones while you fix the old ones.
+- **Compliance you can measure.** Every result is broken down by service, and production logs
+  exported from Kibana or Elasticsearch can be checked the same way as test logs.
 - **Reviewable changes to logging.** A PR comment shows the new and fixed findings compared
   with the base branch, and which event names a change adds or removes.
 - **AI agents that log well.** A Claude Code plugin, an MCP server and an `AGENTS.md` section
@@ -105,6 +107,10 @@ steps:
       logs: logs.jsonl
       comment: "true"
 ```
+
+With `sarif: "true"` (and `security-events: write`), GitHub code scanning shows each finding
+on the source line that logged it, right in the PR diff. Python's `configure()` and the Go
+recipe add the call-site fields that make this work.
 
 GitLab and other CI systems run the same CLI with `--snapshot`, `--compare`, `--markdown` and
 `--html`; see [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md).
@@ -167,11 +173,27 @@ logwarden lint-code src/
 ```
 
 This runs logwarden's Semgrep rules for Python, JavaScript/TypeScript, Go and Java: formatted
-event names, secret and banned field names, and `print` instead of the logger. Ruff (`LOG`,
+event names, secret and banned field names, and `print` instead of the logger. `--sarif`
+writes the findings for code scanning, and a pre-commit hook (`logwarden-lint-code`) runs it
+on staged files. Ruff (`LOG`,
 `G`, `TRY400`) and sloglint cover more in an existing lint setup; the recommended config is in
 [docs/integration.md §6](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#6-lint-the-source-too-recommended).
 
-### 7. Keep AI coding agents in line
+### 7. Audit production logs from Kibana
+
+Tests only cover the paths they run. Export a day of production logs from Kibana or
+Elasticsearch and check what services really write, broken down by service:
+
+```bash
+logwarden check export.csv --message-field log --ignore-field kubernetes --html report.html
+logwarden check export.json --metrics metrics.prom     # per-service numbers for Prometheus
+```
+
+It reads Kibana CSV reports, Elasticsearch `_search` responses and NDJSON dumps, and unwraps
+records that Fluent Bit wrapped. See
+[production logs](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#7-production-logs-kibana-and-elasticsearch-exports).
+
+### 8. Keep AI coding agents in line
 
 - **Claude Code:** `/plugin marketplace add Ingeniator/logwarden`, then
   `/plugin install logwarden@logwarden`. This adds a skill for writing good logs, the MCP
@@ -250,9 +272,8 @@ before the work and filled in before the tag
 
 ## Roadmap
 
-Next: findings shown on the source line in the PR diff (SARIF), checking Kibana and
-Elasticsearch exports, and a continuous check of the live log stream from Kafka and Fluent
-Bit. See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md).
+Next: a continuous check of the live log stream from Kafka and Fluent Bit, with Prometheus
+metrics and findings in Kibana. See [docs/roadmap.md](https://github.com/Ingeniator/logwarden/blob/main/docs/roadmap.md).
 
 ## Contributing
 

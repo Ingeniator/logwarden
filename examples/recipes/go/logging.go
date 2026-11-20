@@ -31,7 +31,8 @@ func NewLogger(w io.Writer, serviceName, serviceVersion, environment string, lev
 	if !environments[environment] {
 		return nil, fmt.Errorf("logging: environment %q must be one of development, staging, test, production", environment)
 	}
-	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level, ReplaceAttr: standardAttr})
+	// AddSource: where each line was logged (code.* fields), for logwarden check --sarif.
+	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level, AddSource: true, ReplaceAttr: standardAttr})
 	return slog.New(traceHandler{h}).With(
 		"service.name", serviceName,
 		"service.version", serviceVersion,
@@ -53,6 +54,15 @@ func standardAttr(groups []string, a slog.Attr) slog.Attr {
 			return slog.String("level", l)
 		case slog.MessageKey:
 			return slog.Attr{Key: "event", Value: a.Value}
+		case slog.SourceKey:
+			if src, ok := a.Value.Any().(*slog.Source); ok && src.File != "" {
+				// A group with an empty key is inlined: three semconv fields instead of "source".
+				return slog.Group("",
+					slog.String("code.file.path", src.File), // absolute; check --sarif makes it repo-relative
+					slog.Int("code.line.number", src.Line),
+					slog.String("code.function.name", src.Function))
+			}
+			return slog.Attr{}
 		}
 	}
 	if sensitiveKey.MatchString(a.Key) {

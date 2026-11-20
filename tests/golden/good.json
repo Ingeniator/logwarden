@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "ok": true,
   "records": 2,
   "skipped_lines": 0,
@@ -18,5 +18,20 @@
   "baseline": null,
   "baselined": 0,
   "baseline_fixed": 0,
-  "disabled": []
+  "disabled": [],
+  "services": [
+    {
+      "service": "yallmp",
+      "lines": 2,
+      "violations": 0,
+      "lines_with_violations": 0,
+      "compliance": 100.0,
+      "by_rule": {},
+      "top_rule": null
+    }
+  ],
+  "input": {
+    "format": "jsonl",
+    "missing_columns": []
+  }
 }

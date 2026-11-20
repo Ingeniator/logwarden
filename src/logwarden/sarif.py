@@ -1,0 +1,121 @@
+"""SARIF 2.1.0 for GitHub code scanning (and other SARIF viewers).
+
+Runtime findings go on the source line that logged them, from the line's
+code.file.path / code.line.number (semconv), else on their line in the log file.
+Like every report, SARIF never contains logged values: only rule messages, event and field names.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+
+from logwarden import __version__, data, report
+
+SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
+INFO_URI = "https://github.com/Ingeniator/logwarden"
+LINT_DOC = "docs/integration.md#6-lint-the-source-too-recommended"
+
+
+def uri(path: str, root: str | None = None) -> str:
+    """Repository-relative URI: strip `root` (default: the current directory) and './'."""
+    p = path.replace("\\", "/")
+    if os.path.isabs(path) or p.startswith("/"):
+        try:
+            rel = os.path.relpath(path, root or os.getcwd()).replace("\\", "/")
+        except ValueError:      # another drive on Windows
+            rel = None
+        if rel and rel != ".." and not rel.startswith("../"):
+            return rel
+        return Path(path).as_uri() if os.path.isabs(path) else p
+    p = p.removeprefix("./")
+    if root and not os.path.isabs(root):
+        p = p.removeprefix(root.replace("\\", "/").removeprefix("./").strip("/") + "/")
+    return p
+
+
+def _location(path: str, line: int | None) -> dict:
+    loc: dict = {"artifactLocation": {"uri": path}}
+    if line:
+        loc["region"] = {"startLine": line}
+    return {"physicalLocation": loc}
+
+
+def _rule(rule_id: str) -> dict:
+    meta = data.rules().get(rule_id, {})
+    r: dict = {"id": rule_id, "name": rule_id,
+               "defaultConfiguration": {"level": "error"},
+               "properties": {"tags": ["logging", "observability"]}}
+    if meta.get("title"):
+        r["shortDescription"] = {"text": meta["title"]}
+    if meta.get("hint"):
+        r["fullDescription"] = {"text": meta["hint"]}
+        r["help"] = {"text": meta["hint"]}
+    if url := report.doc_url(meta.get("doc")):
+        r["helpUri"] = url
+    if meta.get("section"):
+        r["properties"]["tags"].append(meta["section"])
+    return r
+
+
+def _fingerprint(*parts) -> str:
+    return hashlib.sha256("\x1f".join("" if p is None else str(p) for p in parts).encode("utf-8")).hexdigest()
+
+
+def _doc(rules: list[dict], results: list[dict], name: str) -> dict:
+    return {"$schema": SCHEMA, "version": "2.1.0", "runs": [{
+        "tool": {"driver": {"name": name, "version": __version__, "informationUri": INFO_URI,
+                            "rules": rules}},
+        "columnKind": "utf16CodeUnits",
+        "results": results,
+    }]}
+
+
+def from_check(violations: list[dict], log_path: str | None = None, source_root: str | None = None) -> dict:
+    """SARIF for runtime findings (`check --sarif`): the violations after disable/baseline."""
+    ids = sorted({v["rule"] for v in violations}, key=str)
+    index = {r: i for i, r in enumerate(ids)}
+    log_uri = uri(log_path, None) if log_path else None
+    results = []
+    for v in violations:
+        text = v["message"] or v["rule"]
+        if v.get("line") is not None:
+            text += f" (log line {v['line']}" + (f", event '{v['event']}'" if v.get("event") else "") + ")"
+        loc = v.get("loc")
+        if loc:
+            locations = [_location(uri(loc[0], source_root), loc[1])]
+            where = (loc[0], loc[1])
+        elif log_uri:
+            # Search hits have no line in the file; code scanning needs a line, so use the first.
+            locations = [_location(log_uri, v.get("file_line") or 1)]
+            where = (log_uri, v.get("line"))
+        else:
+            locations, where = [], (None, v.get("line"))
+        res = {"ruleId": v["rule"], "ruleIndex": index[v["rule"]], "level": "error",
+               "message": {"text": text}, "locations": locations,
+               "partialFingerprints": {"logwarden/v1": _fingerprint(
+                   v["rule"], v.get("field"), v.get("logger"), v.get("fp_event"), *where)}}
+        if loc and loc[2]:
+            res["locations"][0]["logicalLocations"] = [{"fullyQualifiedName": loc[2], "kind": "function"}]
+        results.append(res)
+    return _doc([_rule(r) for r in ids], results, "logwarden")
+
+
+def from_lint(result: dict) -> dict:
+    """SARIF for `lint-code --sarif` (the Semgrep findings)."""
+    findings = result["findings"]
+    ids = sorted({f["rule"] for f in findings})
+    index = {r: i for i, r in enumerate(ids)}
+    first = {}
+    for f in findings:
+        first.setdefault(f["rule"], f["message"])
+    help_uri = report.doc_url(LINT_DOC)
+    rules = [{"id": r, "name": r, "shortDescription": {"text": first[r].split("\n")[0][:200]},
+              "helpUri": help_uri, "defaultConfiguration": {"level": "error"},
+              "properties": {"tags": ["logging"]}} for r in ids]
+    results = [{"ruleId": f["rule"], "ruleIndex": index[f["rule"]], "level": "error",
+                "message": {"text": f["message"]},
+                "locations": [_location(uri(f["path"]), f["line"])],
+                "partialFingerprints": {"logwarden/v1": _fingerprint(f["rule"], f["path"], f.get("code"))}}
+               for f in findings]
+    return _doc(rules, results, "logwarden lint-code")

@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "ok": false,
   "records": 3,
   "skipped_lines": 1,
@@ -93,70 +93,80 @@
       "event": "Loaded 3 models",
       "rule": "adr_banned_synonym",
       "field": "status",
-      "message": "§2: 'status' is a banned synonym; use http.response.status_code"
+      "message": "§2: 'status' is a banned synonym; use http.response.status_code",
+      "service": "yallmp"
     },
     {
       "line": 1,
       "event": "Loaded 3 models",
       "rule": "adr_semconv_prefix",
       "field": "http_route",
-      "message": "§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'"
+      "message": "§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'",
+      "service": "yallmp"
     },
     {
       "line": 1,
       "event": "Loaded 3 models",
       "rule": "missing_attribute",
       "field": "foo_bar",
-      "message": "Attribute 'foo_bar' does not exist in the registry."
+      "message": "Attribute 'foo_bar' does not exist in the registry.",
+      "service": "yallmp"
     },
     {
       "line": 1,
       "event": "Loaded 3 models",
       "rule": "adr_environment_value",
       "field": "deployment.environment.name",
-      "message": "§3: environment 'dev' must be one of development, staging, test, production"
+      "message": "§3: environment 'dev' must be one of development, staging, test, production",
+      "service": "yallmp"
     },
     {
       "line": 1,
       "event": "Loaded 3 models",
       "rule": "adr_missing_required",
       "field": "service.version",
-      "message": "§3: required field 'service.version' missing"
+      "message": "§3: required field 'service.version' missing",
+      "service": "yallmp"
     },
     {
       "line": 1,
       "event": "Loaded 3 models",
       "rule": "adr_event_name",
       "field": null,
-      "message": "§4: event 'Loaded 3 models' must be a constant snake_case name"
+      "message": "§4: event 'Loaded 3 models' must be a constant snake_case name",
+      "service": "yallmp"
     },
     {
       "line": 2,
       "event": null,
       "rule": "adr_non_json_line",
       "field": null,
-      "message": "§1: line is not a JSON object (plain text)"
+      "message": "§1: line is not a JSON object (plain text)",
+      "service": "(none)"
     },
     {
       "line": 3,
       "event": "upstream_call_failed",
       "rule": "adr_failure_context",
       "field": null,
-      "message": "§10: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code"
+      "message": "§10: 'upstream_call_failed' is a failure line without exception.type, error.type or http.response.status_code",
+      "service": "yallmp"
     },
     {
       "line": 4,
       "event": "user_logged_in",
       "rule": "adr_sensitive_data",
       "field": "password",
-      "message": "§8: 'password' holds a secret or credential; don't log it (log an id or a redacted value)"
+      "message": "§8: 'password' holds a secret or credential; don't log it (log an id or a redacted value)",
+      "service": "yallmp"
     },
     {
       "line": 4,
       "event": "user_logged_in",
       "rule": "adr_trace_context",
       "field": "trace_id",
-      "message": "§7: trace_id must be 32 lowercase hex characters (W3C), not all zeros"
+      "message": "§7: trace_id must be 32 lowercase hex characters (W3C), not all zeros",
+      "service": "yallmp"
     }
   ],
   "findings_truncated": false,
@@ -170,5 +180,41 @@
   "baseline": null,
   "baselined": 0,
   "baseline_fixed": 0,
-  "disabled": []
+  "disabled": [],
+  "services": [
+    {
+      "service": "yallmp",
+      "lines": 3,
+      "violations": 9,
+      "lines_with_violations": 3,
+      "compliance": 0.0,
+      "by_rule": {
+        "adr_banned_synonym": 1,
+        "adr_environment_value": 1,
+        "adr_event_name": 1,
+        "adr_failure_context": 1,
+        "adr_missing_required": 1,
+        "adr_semconv_prefix": 1,
+        "adr_sensitive_data": 1,
+        "adr_trace_context": 1,
+        "missing_attribute": 1
+      },
+      "top_rule": "adr_banned_synonym"
+    },
+    {
+      "service": "(none)",
+      "lines": 1,
+      "violations": 1,
+      "lines_with_violations": 1,
+      "compliance": 0.0,
+      "by_rule": {
+        "adr_non_json_line": 1
+      },
+      "top_rule": "adr_non_json_line"
+    }
+  ],
+  "input": {
+    "format": "jsonl",
+    "missing_columns": []
+  }
 }

@@ -32,6 +32,10 @@ logwarden: 5 records, 18 violations (4 blank or non-JSON lines)
 	fix: Log the type the registry declares (e.g. http.response.status_code is an int, not a string).
 	e.g. Attribute 'http.response.status_code' has type 'string'. Type should be 'int'.
 
+by service:
+  s	5 lines	16 violations	0.0% compliant lines	top: missing_attribute
+  (none)	2 lines	2 violations	0.0% compliant lines	top: adr_non_json_line
+
 findings (first 18):
   line 1	missing_attribute	Attribute 'attempt' does not exist in the registry.
   line 1	missing_attribute	Attribute 'ok' does not exist in the registry.

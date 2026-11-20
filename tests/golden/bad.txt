@@ -40,6 +40,10 @@ logwarden: 3 records, 10 violations (1 blank or non-JSON lines)
 	fix: Use the OTel semconv name if one exists. If it is a real domain field, declare it in logwarden-fields.yaml.
 	e.g. Attribute 'foo_bar' does not exist in the registry.
 
+by service:
+  yallmp	3 lines	9 violations	0.0% compliant lines	top: adr_banned_synonym
+  (none)	1 line	1 violation	0.0% compliant lines	top: adr_non_json_line
+
 findings (first 10):
   line 1	adr_banned_synonym	§2: 'status' is a banned synonym; use http.response.status_code
   line 1	adr_semconv_prefix	§2: 'http_route' uses '_' where semconv uses '.'; probably 'http.route'

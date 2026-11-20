@@ -59,11 +59,32 @@ def resolve_fields(arg: str | None, registry: str | None, cwd: Path) -> Path | N
     return _fields(arg, registry, cwd, _load_config(cwd))
 
 
+def source_of(cfg: config.Config, a: argparse.Namespace | None = None) -> "sources.Source":
+    """[source] from the config, overridden by --format, --message-field, --ignore-field, --service."""
+    from logwarden import sources
+    src = sources.Source(format=cfg.input.get("format", "auto"),
+                         message_field=cfg.input.get("message_field"),
+                         ignore_fields=list(cfg.input.get("ignore_fields", [])),
+                         service_field=cfg.input.get("service_field", "service.name"))
+    if a is not None:
+        if getattr(a, "format", None):
+            src.format = a.format
+        if getattr(a, "message_field", None):
+            src.message_field = a.message_field
+        src.ignore_fields += getattr(a, "ignore_field", None) or []
+        if getattr(a, "service_field", None):
+            src.service_field = a.service_field
+        src.services = getattr(a, "service", None) or None
+    return src
+
+
 def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None,
-            baseline: str | None = None, no_baseline: bool = False) -> tuple[Path | None, check.Policy]:
-    """Fields file and policy (disabled rules, baseline) for a check run in `cwd`."""
+            baseline: str | None = None, no_baseline: bool = False,
+            args: argparse.Namespace | None = None) -> tuple[Path | None, check.Policy]:
+    """Fields file and policy (disabled rules, baseline, input format) for a check run in `cwd`."""
     cfg = _load_config(cwd)
-    policy = check.Policy(disabled=dict(cfg.disable), upstreams=list(cfg.upstreams))
+    policy = check.Policy(disabled=dict(cfg.disable), upstreams=list(cfg.upstreams),
+                          source=source_of(cfg, args))
     if cfg.events:
         from logwarden import catalog
         p = Path(cfg.events)
@@ -103,7 +124,7 @@ def _write(path: Path, content: str) -> None:
 def _check_text(text: str, a: argparse.Namespace) -> int:
     from logwarden import report
     fields, policy = resolve(Path.cwd(), fields=a.fields, registry=a.registry,
-                             baseline=a.baseline, no_baseline=a.no_baseline)
+                             baseline=a.baseline, no_baseline=a.no_baseline, args=a)
     base = None
     if a.compare:
         p = Path(a.compare)
@@ -126,8 +147,17 @@ def _check_text(text: str, a: argparse.Namespace) -> int:
     else:
         print(output.text(result, a.max))
     snapshot = json.dumps(an.snapshot, indent=2, ensure_ascii=False) + "\n"
+
+    def sarif_doc() -> str:
+        from logwarden import sarif
+        log_path = getattr(a, "input", None) or getattr(a, "output", None)   # capture: its output
+        log_path = None if log_path == "-" else log_path
+        return json.dumps(sarif.from_check(an.violations, log_path, a.source_root), indent=2,
+                          ensure_ascii=False) + "\n"
+
     targets = [(a.snapshot, lambda: snapshot), (a.markdown, lambda: report.markdown(result)),
-               (a.html, lambda: report.html(result, an.events))]
+               (a.html, lambda: report.html(result, an.events)),
+               (a.sarif, sarif_doc), (a.metrics, lambda: report.metrics(result))]
     if a.o:
         targets += [(str(Path(a.o) / "snapshot.json"), lambda: snapshot),
                     (str(Path(a.o) / "report.md"), lambda: report.markdown(result)),
@@ -140,9 +170,18 @@ def _check_text(text: str, a: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def _types_for_catalog() -> dict[str, str]:
+    """CSV value types only matter for fields; the catalog lists events, so strings are fine."""
+    return {}
+
+
 def cmd_catalog(a: argparse.Namespace) -> int:
     from logwarden import catalog
-    records, _ = check.parse_lines(_read_input(a.input))
+    try:
+        records = check.read(_read_input(a.input), source_of(_load_config(Path.cwd()), a),
+                             _types_for_catalog).records
+    except check.CheckError as e:
+        raise UsageError(str(e)) from e
     seen = catalog.collect(records)
     if a.output:
         target = Path(a.output)
@@ -252,6 +291,9 @@ def cmd_lint_code(a: argparse.Namespace) -> int:
         result = lint.run(a.paths, exclude=a.exclude_rule)
     except lint.LintError as e:
         raise UsageError(f"lint-code: {e}") from e
+    if a.sarif:
+        from logwarden import sarif
+        _write(Path(a.sarif), json.dumps(sarif.from_lint(result), indent=2, ensure_ascii=False) + "\n")
     print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else lint.text(result, a.max))
     return 0 if result["ok"] else 1
 
@@ -259,7 +301,7 @@ def cmd_lint_code(a: argparse.Namespace) -> int:
 def cmd_baseline(a: argparse.Namespace) -> int:
     cwd = Path.cwd()
     text = _read_input(a.input)
-    fields, policy = resolve(cwd, fields=a.fields, registry=a.registry, no_baseline=True)
+    fields, policy = resolve(cwd, fields=a.fields, registry=a.registry, no_baseline=True, args=a)
     cfg_path = config.load(cwd).baseline
     target = Path(a.output or cfg_path or cwd / config.DEFAULT_BASELINE)
     try:
@@ -353,6 +395,29 @@ def _report_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--snapshot", metavar="FILE", help="save what this run found, to --compare with later")
     p.add_argument("--html", metavar="FILE", help="write a self-contained HTML report")
     p.add_argument("--markdown", metavar="FILE", help="write a Markdown summary (PR comment, job summary)")
+    p.add_argument("--sarif", metavar="FILE",
+                   help="write SARIF for code scanning: findings on the source line that logged them "
+                        "(needs code.file.path / code.line.number in the lines)")
+    p.add_argument("--source-root", metavar="DIR",
+                   help="path prefix to remove from code.file.path in SARIF (default: the current directory)")
+    p.add_argument("--metrics", metavar="FILE",
+                   help="write per-service metrics in Prometheus text format (Pushgateway, textfile collector)")
+
+
+def _input_args(p: argparse.ArgumentParser) -> None:
+    from logwarden.sources import FORMATS
+    g = p.add_argument_group("input", "Kibana / Elasticsearch exports and records wrapped by a log "
+                                      "shipper (defaults: [source] in the config)")
+    g.add_argument("--format", choices=FORMATS,
+                   help="jsonl (JSON lines, elasticdump), es (Elasticsearch _search response), "
+                        "csv (Kibana CSV report); default: detected")
+    g.add_argument("--message-field", metavar="NAME",
+                   help="parse the service's JSON line from this field, e.g. log (Fluent Bit)")
+    g.add_argument("--ignore-field", action="append", metavar="NAME",
+                   help="field added by the pipeline, not the service, e.g. kubernetes (repeatable)")
+    g.add_argument("--service-field", metavar="NAME", help="field that names the service (default service.name)")
+    g.add_argument("--service", action="append", metavar="NAME",
+                   help="check only this service (repeatable; '(none)' for lines without one)")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -364,7 +429,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", metavar="command")
 
-    c = sub.add_parser("check", help="check JSON-lines logs (- reads stdin)")
+    c = sub.add_parser("check", help="check logs: JSON lines, Kibana CSV or Elasticsearch exports (- reads stdin)")
     c.add_argument("input", help="log file, or - for stdin")
     c.add_argument("--json", action="store_true", help="machine-readable result (CI tools, AI agents)")
     c.add_argument("--fields", help=f"project-only fields file (default: config, then ./{FIELDS_DEFAULT})")
@@ -375,6 +440,7 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--baseline", metavar="FILE", help="fail only on findings not in FILE (default: config)")
     c.add_argument("--no-baseline", action="store_true", help="ignore the configured baseline")
     _report_args(c)
+    _input_args(c)
     c.set_defaults(fn=cmd_check)
 
     b = sub.add_parser("baseline", help="record current findings so check fails only on new ones")
@@ -383,6 +449,7 @@ def parser() -> argparse.ArgumentParser:
                    help=f"baseline file (default: config 'baseline', then ./{config.DEFAULT_BASELINE})")
     b.add_argument("--fields", help="project-only fields file (as for check)")
     b.add_argument("--registry", help="full Weaver registry overlay (as for check)")
+    _input_args(b)
     b.set_defaults(fn=cmd_baseline)
 
     cap = sub.add_parser("capture", help="receive logs over OTLP/HTTP, write them as JSON lines, then check them",
@@ -412,6 +479,7 @@ def parser() -> argparse.ArgumentParser:
     fmt = cat.add_mutually_exclusive_group()
     fmt.add_argument("--json", action="store_true", help="machine-readable list")
     fmt.add_argument("--markdown", action="store_true", help="Markdown table (with descriptions from the catalog)")
+    _input_args(cat)
     cat.set_defaults(fn=cmd_catalog)
 
     lc = sub.add_parser("lint-code", help="check source code with logwarden's Semgrep rules (needs semgrep)",
@@ -423,6 +491,7 @@ def parser() -> argparse.ArgumentParser:
     lc.add_argument("--exclude-rule", action="append", default=[], metavar="ID",
                     help="skip a rule, e.g. logwarden-print-python (repeatable)")
     lc.add_argument("--list", action="store_true", help="list the rule ids")
+    lc.add_argument("--sarif", metavar="FILE", help="also write the findings as SARIF (code scanning)")
     lc.set_defaults(fn=cmd_lint_code)
 
     r = sub.add_parser("rules", help="list rules, or explain one")

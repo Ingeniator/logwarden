@@ -19,6 +19,20 @@ def doc_url(doc: str | None) -> str | None:
     return f"https://github.com/Ingeniator/logwarden/blob/{ref}/{doc}"
 
 
+def show_services(result: dict) -> bool:
+    """A per-service table says something when there is more than one service, or a named one."""
+    s = result.get("services") or []
+    return len(s) > 1 or (len(s) == 1 and s[0]["service"] != "(none)")
+
+
+def missing_note(result: dict) -> str | None:
+    cols = (result.get("input") or {}).get("missing_columns") or []
+    if not cols:
+        return None
+    return (f"The export has no column for {', '.join(cols)}, so these fields weren't checked. "
+            "Export `_source` (or these columns) to check them.")
+
+
 def _where(line) -> str:
     return "run" if line is None else str(line)
 
@@ -85,6 +99,17 @@ def _md_report(result: dict, rows: int) -> str:
             out.append(f"| {r['count']} | {rule}{title} | {_md(r.get('hint') or '')} |")
         if len(result["by_rule"]) > rows:
             out.append(f"\n… and {len(result['by_rule']) - rows} more rules")
+    if show_services(result):
+        svcs = result["services"]
+        out.append("\n#### By service\n\n| Service | Lines | Violations | Compliant lines | Top rule |\n"
+                   "|---|---|---|---|---|")
+        for s in svcs[:rows]:
+            out.append(f"| {_code(s['service'])} | {s['lines']} | {s['violations']} | {s['compliance']}% | "
+                       f"{_code(s['top_rule'])} |")
+        if len(svcs) > rows:
+            out.append(f"\n… and {len(svcs) - rows} more services")
+    if note := missing_note(result):
+        out.append(f"\n> {note}")   # our own text; the column names are fixed field names
     if result["findings"]:
         shown = result["findings"][:rows]
         out.append(f"\n<details><summary>Findings (first {len(shown)} of {n})</summary>\n\n"
@@ -201,6 +226,13 @@ def html(result: dict, events: dict | None = None, title: str = "logwarden repor
                 [[_c(e["rule"]), _c(e["field"]), _c(e["event"]), _h(e["count"])]
                  for e in cmp_["fixed_entries"]], {3}))
 
+    if note := missing_note(result):
+        parts.append(f"<p class=\"muted\">{_h(note.replace('`', ''))}</p>")
+    if show_services(result):
+        parts.append("<h2>By service</h2>" + _table(
+            ["Service", "Lines", "Violations", "Compliant lines", "Top rule"],
+            [[_c(s["service"]), _h(s["lines"]), _h(s["violations"]), _h(f"{s['compliance']}%"),
+              _c(s["top_rule"])] for s in result["services"]], {1, 2, 3}))
     if result["by_rule"]:
         parts.append("<h2>Violations by rule</h2>")
         for r in result["by_rule"]:
@@ -233,3 +265,29 @@ def html(result: dict, events: dict | None = None, title: str = "logwarden repor
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             f"<title>{_h(title)}</title><style>{_CSS}</style></head>"
             f"<body><main>{''.join(parts)}</main></body></html>\n")
+
+
+# ---------------------------------------------------------------- Prometheus
+
+def _label(v) -> str:
+    return str(v).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+
+
+def metrics(result: dict) -> str:
+    """Per-service numbers in the Prometheus text format (Pushgateway, node_exporter textfile).
+
+    The names are the ones `logwarden watch` will serve, so one dashboard works for both.
+    """
+    svcs = result.get("services") or []
+    out = ["# HELP logwarden_lines_total Log lines checked, by service.",
+           "# TYPE logwarden_lines_total counter"]
+    out += [f'logwarden_lines_total{{service="{_label(s["service"])}"}} {s["lines"]}' for s in svcs]
+    out += ["# HELP logwarden_lines_with_violations_total Log lines with at least one violation, by service.",
+            "# TYPE logwarden_lines_with_violations_total counter"]
+    out += [f'logwarden_lines_with_violations_total{{service="{_label(s["service"])}"}} '
+            f'{s["lines_with_violations"]}' for s in svcs]
+    out += ["# HELP logwarden_violations_total Violations, by service and rule.",
+            "# TYPE logwarden_violations_total counter"]
+    out += [f'logwarden_violations_total{{service="{_label(s["service"])}",rule="{_label(r)}"}} {n}'
+            for s in svcs for r, n in s["by_rule"].items()]
+    return "\n".join(out) + "\n"

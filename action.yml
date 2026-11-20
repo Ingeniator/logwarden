@@ -38,6 +38,12 @@ inputs:
     description: Names this check's snapshots in the cache. Set a different one when a job checks several log files.
     required: false
     default: ${{ github.job }}
+  sarif:
+    description: >
+      Upload the findings to GitHub code scanning as SARIF, so each one shows on the source line that
+      logged it (needs code.file.path / code.line.number in the logs, and security-events write permission).
+    required: false
+    default: "false"
   token:
     description: Token for the PR comment.
     required: false
@@ -72,10 +78,12 @@ runs:
         LW_FIELDS: ${{ inputs.fields }}
         LW_COMPARE: ${{ inputs.compare }}
         LW_EVENT: ${{ github.event_name }}
+        LW_SARIF: ${{ inputs.sarif }}
       run: |
         # logwarden is built from this action's own checkout, so action and CLI are one version.
         args=(check "$LW_LOGS" -o logwarden.report --max 50)
         [ -n "$LW_FIELDS" ] && args+=(--fields "$LW_FIELDS")
+        [ "$LW_SARIF" = true ] && args+=(--sarif logwarden.report/logwarden.sarif)
         case "$LW_COMPARE" in
           auto)
             if [[ "$LW_EVENT" == pull_request* ]]; then
@@ -136,6 +144,14 @@ runs:
         else
           echo "::warning::logwarden could not comment on the pull request (it needs 'pull-requests: write'; pull requests from forks get a read-only token): $out"
         fi
+    - name: Upload SARIF to code scanning
+      if: inputs.sarif == 'true' && hashFiles('logwarden.report/logwarden.sarif') != ''
+      # Without security-events write (or code scanning) this warns instead of failing the check.
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: logwarden.report/logwarden.sarif
+        category: logwarden-${{ inputs.snapshot-id }}
     - name: Upload the report
       if: inputs.upload == 'true' && hashFiles('logwarden.report/report.html') != ''
       uses: actions/upload-artifact@v4
@@ -146,6 +162,7 @@ runs:
           logwarden.report/report.md
           logwarden.report/result.json
           logwarden.report/snapshot.json
+          logwarden.report/logwarden.sarif
         overwrite: true
     - name: Result
       shell: bash

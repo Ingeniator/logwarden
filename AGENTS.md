@@ -16,11 +16,13 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
 | `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), `disable` and baseline, the result dict |
 | `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv release archive (pinned SHA-256 in `SEMCONV_SHA256`) |
-| `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit) and the self-contained HTML report |
+| `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit), the self-contained HTML report, Prometheus metrics (`--metrics`) |
+| `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
+| `src/logwarden/sarif.py` | SARIF 2.1.0 for `check --sarif` (location from `code.file.path`/`code.line.number`) and `lint-code --sarif`; schema in `tests/data/` |
 | `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |
-| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`, `upstreams`, `events`) |
+| `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`, `upstreams`, `events`, `[source]`) |
 | `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
 | `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
@@ -89,6 +91,11 @@ logged value of a possibly sensitive field.
 - Reports never show logged values: only rule messages (which never contain them), event and
   field names. Escape everything in HTML and Markdown (`tests/test_review.py` logs
   `<script>` as an event name).
+- Per-service numbers and metric labels contain service names and rule ids only. The metric
+  names (`logwarden_lines_total`, `logwarden_lines_with_violations_total`,
+  `logwarden_violations_total`) are a public interface, like rule ids.
+- A finding's `line` is the line, CSV row or search hit number of its record; `file_line`
+  (internal) is its line in the input file, used for SARIF.
 - Snapshots use the baseline's entry format (`make_baseline`), so a baseline also works as
   `--compare`. `--compare` never changes the exit code.
 - `capture` writes only the result to stdout; the wrapped command's stdout goes to stderr.

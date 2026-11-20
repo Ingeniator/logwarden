@@ -74,6 +74,37 @@ jobs:
           comment: "true"
           fail: "false"
 
+  # Findings on the source line: a service logging through configure(callsite=True), uploaded
+  # to code scanning. On a pull request, a new bad log call is annotated in the diff.
+  sarif:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --extra structlog python tests/data/sarif_demo/orders.py > sarif-demo.jsonl
+      - uses: ./
+        id: lw
+        with:
+          logs: sarif-demo.jsonl
+          fields: tests/data/sarif_demo/logwarden-fields.yaml
+          sarif: "true"
+          compare: "false"
+          fail: "false"
+          upload: "false"
+          snapshot-id: sarif
+      - name: The SARIF points at the log call
+        run: |
+          uv run --no-project python - <<'EOF'
+          import json
+          doc = json.load(open("logwarden.report/logwarden.sarif"))
+          locs = [r["locations"][0]["physicalLocation"] for r in doc["runs"][0]["results"]]
+          print(locs)
+          assert {"artifactLocation": {"uri": "tests/data/sarif_demo/orders.py"}, "region": {"startLine": 13}} in locs
+          EOF
+
   # Without write permission (like a fork's PR) the comment step warns and the job passes.
   review-readonly:
     if: github.event_name == 'pull_request'

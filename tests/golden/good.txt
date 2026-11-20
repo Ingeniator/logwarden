@@ -1,4 +1,7 @@
 logwarden: 2 records, 0 violations
 OK
 
+by service:
+  yallmp	2 lines	0 violations	100.0% compliant lines
+
 not failing: undefined_enum_variant=1

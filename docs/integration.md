@@ -214,6 +214,46 @@ logwarden:
 
 `report/report.md` can be posted as a merge-request note with the GitLab API.
 
+### Findings on the source line (SARIF)
+
+`check --sarif FILE` writes the findings as [SARIF](https://sarifweb.azurewebsites.net/), so
+GitHub code scanning (and other SARIF viewers) show each one on the line of code that logged
+it. That works when log lines say where they were logged, in the semconv fields
+`code.file.path`, `code.line.number` and `code.function.name`:
+
+- **Python:** `configure(..., callsite=True)`, or `LOGWARDEN_CALLSITE=1`. The pytest plugin
+  sets it while capturing, so test logs have the fields with no code change.
+- **Go:** the recipe turns on slog's `AddSource` and maps it to the three fields.
+- Other languages: add the fields in the shared formatter if the logger provides the call site.
+
+A finding without a location is placed on its line in the log file instead. Paths are made
+relative to the repository: an absolute path under the current directory is shortened, and
+`--source-root /build/dir` removes a build-time prefix.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write        # for sarif: "true"
+steps:
+  - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
+  - uses: Ingeniator/logwarden@v0.7.0
+    with:
+      logs: logs.jsonl
+      sarif: "true"
+```
+
+`lint-code --sarif FILE` does the same for the source rules. Upload it in its own step:
+
+```yaml
+  - run: uvx logwarden==0.7.0 lint-code --sarif lint.sarif src/ || true
+  - uses: github/codeql-action/upload-sarif@v3
+    with: {sarif_file: lint.sarif, category: logwarden-lint-code}
+```
+
+Code scanning is free on public repositories; private ones need GitHub Advanced Security.
+Without `security-events: write`, the Action's upload step warns and the check still decides
+the job's result.
+
 ## 4. Project config and project-only fields
 
 ```toml
@@ -250,6 +290,16 @@ events to it, keeping existing entries and descriptions:
 description = "An order file was parsed and stored."
 levels = ["info"]
 ```
+
+```toml
+[source]                              # how to read the input (exports, log shippers)
+message_field = "log"                 # the service's JSON line is in this field
+ignore_fields = ["kubernetes", "stream", "@timestamp", "time", "_p"]
+service_field = "service.name"        # for the per-service breakdown (default)
+format = "auto"                       # or jsonl, es, csv
+```
+
+`[source]` is described in [§7](#7-production-logs-kibana-and-elasticsearch-exports).
 
 `disable` switches a rule off for this project. Each rule needs a reason, and disabled
 rules are listed with their reasons in every result.
@@ -348,3 +398,89 @@ banned-synonym list (§2 of the standard); if it changes, update it here too.
 
 A source linter can't see fields added by processors or middleware, or check that required
 fields and failure context are actually present, so it doesn't replace logwarden.
+
+**pre-commit:** run `lint-code` on the staged files before each commit:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/Ingeniator/logwarden
+    rev: v0.7.0
+    hooks:
+      - id: logwarden-lint-code
+```
+
+The hook installs logwarden; Semgrep comes from PATH, or runs with `uvx` when uv is
+installed. Commits that touch no Python, Go, JavaScript/TypeScript or Java files skip it.
+
+## 7. Production logs: Kibana and Elasticsearch exports
+
+Tests only show the code paths they run. To see what services really log, check an export
+of production or staging logs. `check`, `baseline`, `catalog`, `--snapshot` and `--compare`
+read these formats and detect which one a file is (or set `--format`):
+
+| Export | How to get it | `--format` |
+|---|---|---|
+| Kibana Discover CSV report | Discover → pick a time range and a query → Share → CSV. Add the `_source` column for whole lines | `csv` |
+| Elasticsearch `_search` response | Kibana Dev Tools or `curl` (below); one response, a JSON array of scroll pages, or one page per line | `es` |
+| One document per line | `elasticdump --type=data`, or any NDJSON of documents (bare, or with `_source`) | `jsonl` |
+
+```bash
+curl -s -H 'Content-Type: application/json' "$ES/logs-*/_search?size=10000" -d '{
+  "query": {"bool": {"filter": [
+    {"term": {"service.name": "orders-api"}},
+    {"range": {"@timestamp": {"gte": "now-24h"}}}]}}}' > export.json
+logwarden check export.json --html report.html
+```
+
+Findings refer to the row or hit number instead of a line, and show the document `_id` when
+the export has it.
+
+**CSV without `_source`.** With one column per field, CSV loses the value types, so
+logwarden takes them from the registry (`"200"` becomes the number 200 for
+`http.response.status_code`). It also undoes Kibana's escaping of values that start with
+`-`, `=`, `+` or `@`, and thousands separators. If the export leaves out a required field's
+column, that field isn't reported as missing: it may be in the logs and just not exported.
+The output names the missing columns. Exporting `_source` avoids all of this.
+
+**Fluent Bit records.** A log shipper adds its own fields, and Fluent Bit often keeps the
+service's line as a string in `log`. `[source]` (or the options of the same name) handles the
+three usual shapes:
+
+| Fluent Bit setup | Record | Config |
+|---|---|---|
+| no parser (tail, docker or CRI input) | `{"log": "{\"event\": ...}", "stream": "stdout", "kubernetes": {...}}` | `message_field = "log"` |
+| Kubernetes filter `Merge_Log On` | the line's fields at the top level, plus `kubernetes`, `stream`, ... | only `ignore_fields` |
+| `Merge_Log_Key log_processed` | `{"log_processed": {...}, "log": "...", ...}` | `message_field = "log_processed"` |
+
+`ignore_fields` lists the fields the pipeline added (a name also covers its dotted
+sub-fields, so `kubernetes` covers `kubernetes.pod_name`), so they aren't reported as
+unknown. A `log` string that isn't JSON is reported as `adr_non_json_line`, like a plain-text
+line.
+
+```bash
+logwarden check export.csv --message-field log --ignore-field kubernetes --ignore-field stream
+```
+
+**Per service.** Every result breaks the findings down by `service.name` (or
+`service_field`): the lines, the violations by rule, the lines with a violation, the share of
+compliant lines and the most frequent rule. It's in `--json` (`services`), the text output,
+the HTML report and the Markdown summary. `--service NAME` (repeatable) checks only some
+services; `(none)` selects lines without one.
+
+`--metrics FILE` writes the same numbers in the Prometheus text format, for a Pushgateway or
+the node_exporter textfile collector, so a nightly export check can feed a dashboard:
+
+```text
+logwarden_lines_total{service="orders-api"} 1200
+logwarden_lines_with_violations_total{service="orders-api"} 85
+logwarden_violations_total{service="orders-api",rule="adr_banned_synonym"} 60
+```
+
+```bash
+logwarden check export.json --metrics metrics.prom
+curl --data-binary @metrics.prom "$PUSHGATEWAY/metrics/job/logwarden"
+```
+
+Compliance per service in PromQL:
+`1 - logwarden_lines_with_violations_total / logwarden_lines_total`.

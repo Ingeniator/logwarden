@@ -58,7 +58,9 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
    - CLI: `logwarden check /tmp/logs.jsonl --json`, or `uvx logwarden check ...` with no install
 3. **Fix** each finding. `by_rule[].hint` says how; `logwarden rules <id>` or the MCP
    tool `explain_rule` gives an example. `findings[].line` is the line number in the log
-   file, and `findings[].event` tells you which log call produced it.
+   file, and `findings[].event` tells you which log call produced it. When the lines carry
+   `code.file.path`/`code.line.number` (Python `configure()` adds them under pytest), go
+   straight to that file and line; `check --sarif FILE` lists them too.
 4. Re-run until the lines your change produced are clean.
 
 ## Rules for you
@@ -81,6 +83,11 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
   add it to that file with a one-line description (by hand, or with
   `logwarden catalog <logs> -o logwarden-events.toml`) and mention it in your summary.
   Prefer an existing event over a near-duplicate name; if the finding is a typo, fix the name.
+- **Production logs:** when asked to audit what services log, use a Kibana CSV export
+  (with `_source`) or an Elasticsearch `_search` response: `logwarden check export.json --json`.
+  For Fluent Bit records add `--message-field log` and `--ignore-field kubernetes` (or the
+  project's `[source]` config). Summarise by `services[]` (compliance, top rule) and never
+  quote logged values from the export.
 - To show what your change did to the logs, compare with a run on the base branch:
   `logwarden check <base logs> --snapshot /tmp/base.json`, then
   `logwarden check <logs> --compare /tmp/base.json --json` (`compare.new_findings`,

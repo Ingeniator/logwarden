@@ -1,0 +1,9 @@
+# pre-commit hooks (https://pre-commit.com). Semgrep is not installed with logwarden: lint-code
+# runs it from PATH, or with uvx when uv is installed.
+- id: logwarden-lint-code
+  name: logwarden lint-code
+  description: Logging rules of the logwarden standard on the staged source files (Semgrep).
+  entry: logwarden lint-code
+  language: python
+  types_or: [python, go, javascript, jsx, ts, tsx, java]
+  require_serial: true

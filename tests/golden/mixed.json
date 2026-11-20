@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "ok": false,
   "records": 5,
   "skipped_lines": 4,
@@ -77,126 +77,144 @@
       "event": "retry_scheduled",
       "rule": "missing_attribute",
       "field": "attempt",
-      "message": "Attribute 'attempt' does not exist in the registry."
+      "message": "Attribute 'attempt' does not exist in the registry.",
+      "service": "s"
     },
     {
       "line": 1,
       "event": "retry_scheduled",
       "rule": "missing_attribute",
       "field": "ok",
-      "message": "Attribute 'ok' does not exist in the registry."
+      "message": "Attribute 'ok' does not exist in the registry.",
+      "service": "s"
     },
     {
       "line": 1,
       "event": "retry_scheduled",
       "rule": "missing_attribute",
       "field": "meta",
-      "message": "Attribute 'meta' does not exist in the registry."
+      "message": "Attribute 'meta' does not exist in the registry.",
+      "service": "s"
     },
     {
       "line": 1,
       "event": "retry_scheduled",
       "rule": "missing_attribute",
       "field": "tags",
-      "message": "Attribute 'tags' does not exist in the registry."
+      "message": "Attribute 'tags' does not exist in the registry.",
+      "service": "s"
     },
     {
       "line": 1,
       "event": "retry_scheduled",
       "rule": "missing_attribute",
       "field": "nothing",
-      "message": "Attribute 'nothing' does not exist in the registry."
+      "message": "Attribute 'nothing' does not exist in the registry.",
+      "service": "s"
     },
     {
       "line": 4,
       "event": "db_write_failed",
       "rule": "adr_semconv_prefix",
       "field": "http_method",
-      "message": "§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'"
+      "message": "§2: 'http_method' uses '_' where semconv uses '.'; probably 'http.method'",
+      "service": "s"
     },
     {
       "line": 5,
       "event": null,
       "rule": "adr_non_json_line",
       "field": null,
-      "message": "§1: line is not a JSON object (plain text)"
+      "message": "§1: line is not a JSON object (plain text)",
+      "service": "(none)"
     },
     {
       "line": 6,
       "event": null,
       "rule": "adr_non_json_line",
       "field": null,
-      "message": "§1: line is not a JSON object (JSON array)"
+      "message": "§1: line is not a JSON object (JSON array)",
+      "service": "(none)"
     },
     {
       "line": 7,
       "event": "no level here",
       "rule": "adr_missing_required",
       "field": "deployment.environment.name",
-      "message": "§3: required field 'deployment.environment.name' missing"
+      "message": "§3: required field 'deployment.environment.name' missing",
+      "service": "s"
     },
     {
       "line": 7,
       "event": "no level here",
       "rule": "adr_missing_required",
       "field": "service.version",
-      "message": "§3: required field 'service.version' missing"
+      "message": "§3: required field 'service.version' missing",
+      "service": "s"
     },
     {
       "line": 7,
       "event": "no level here",
       "rule": "adr_event_name",
       "field": null,
-      "message": "§4: event 'no level here' must be a constant snake_case name"
+      "message": "§4: event 'no level here' must be a constant snake_case name",
+      "service": "s"
     },
     {
       "line": 8,
       "event": "shutdown_started",
       "rule": "type_mismatch",
       "field": "http.response.status_code",
-      "message": "Attribute 'http.response.status_code' has type 'string'. Type should be 'int'."
+      "message": "Attribute 'http.response.status_code' has type 'string'. Type should be 'int'.",
+      "service": "s"
     },
     {
       "line": 8,
       "event": "shutdown_started",
       "rule": "deprecated",
       "field": "gen_ai.system",
-      "message": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'."
+      "message": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'.",
+      "service": "s"
     },
     {
       "line": 8,
       "event": "shutdown_started",
       "rule": "adr_banned_synonym",
       "field": "env",
-      "message": "§2: 'env' is a banned synonym; use deployment.environment.name"
+      "message": "§2: 'env' is a banned synonym; use deployment.environment.name",
+      "service": "s"
     },
     {
       "line": 8,
       "event": "shutdown_started",
       "rule": "adr_banned_synonym",
       "field": "path",
-      "message": "§2: 'path' is a banned synonym; use url.path or http.route"
+      "message": "§2: 'path' is a banned synonym; use url.path or http.route",
+      "service": "s"
     },
     {
       "line": 9,
       "event": "cache_hit",
       "rule": "adr_semconv_prefix",
       "field": "user_id",
-      "message": "§2: 'user_id' uses '_' where semconv uses '.'; probably 'user.id'"
+      "message": "§2: 'user_id' uses '_' where semconv uses '.'; probably 'user.id'",
+      "service": "s"
     },
     {
       "line": 9,
       "event": "cache_hit",
       "rule": "adr_semconv_prefix",
       "field": "db_rows",
-      "message": "§2: 'db_rows' uses '_' where semconv uses '.'; probably 'db.rows'"
+      "message": "§2: 'db_rows' uses '_' where semconv uses '.'; probably 'db.rows'",
+      "service": "s"
     },
     {
       "line": 9,
       "event": "cache_hit",
       "rule": "missing_attribute",
       "field": "big",
-      "message": "Attribute 'big' does not exist in the registry."
+      "message": "Attribute 'big' does not exist in the registry.",
+      "service": "s"
     }
   ],
   "findings_truncated": false,
@@ -210,5 +228,39 @@
   "baseline": null,
   "baselined": 0,
   "baseline_fixed": 0,
-  "disabled": []
+  "disabled": [],
+  "services": [
+    {
+      "service": "s",
+      "lines": 5,
+      "violations": 16,
+      "lines_with_violations": 5,
+      "compliance": 0.0,
+      "by_rule": {
+        "missing_attribute": 6,
+        "adr_semconv_prefix": 3,
+        "adr_banned_synonym": 2,
+        "adr_missing_required": 2,
+        "adr_event_name": 1,
+        "deprecated": 1,
+        "type_mismatch": 1
+      },
+      "top_rule": "missing_attribute"
+    },
+    {
+      "service": "(none)",
+      "lines": 2,
+      "violations": 2,
+      "lines_with_violations": 2,
+      "compliance": 0.0,
+      "by_rule": {
+        "adr_non_json_line": 2
+      },
+      "top_rule": "adr_non_json_line"
+    }
+  ],
+  "input": {
+    "format": "jsonl",
+    "missing_columns": []
+  }
 }

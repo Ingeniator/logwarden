@@ -141,6 +141,34 @@ def _drop_meta(_, __, event_dict):
     return event_dict
 
 
+def _callsite():
+    """code.file.path / code.line.number / code.function.name of the logging call (semconv)."""
+    cp = structlog.processors.CallsiteParameter
+    adder = structlog.processors.CallsiteParameterAdder(
+        {cp.PATHNAME, cp.LINENO, cp.FUNC_NAME, cp.MODULE}, additional_ignores=["logwarden.logging"])
+    cwd = os.getcwd()
+
+    def add_code_location(logger, name, event_dict):
+        event_dict = adder(logger, name, event_dict)
+        path = event_dict.pop("pathname", None)
+        line = event_dict.pop("lineno", None)
+        func = event_dict.pop("func_name", None)
+        module = event_dict.pop("module", None)
+        if isinstance(path, str) and path:
+            try:
+                rel = os.path.relpath(path, cwd)
+            except ValueError:      # another drive on Windows
+                rel = path
+            # Relative to the working directory when inside it, so it matches the repository.
+            event_dict["code.file.path"] = (path if rel.startswith("..") else rel).replace("\\", "/")
+        if isinstance(line, int):
+            event_dict["code.line.number"] = line
+        if isinstance(func, str) and func:
+            event_dict["code.function.name"] = f"{module}.{func}" if module and func != "<module>" else func
+        return event_dict
+    return add_code_location
+
+
 def _json_default(o: Any) -> str:
     return str(o)
 
@@ -159,7 +187,7 @@ def configure(service_name: str | None = None, service_version: str | None = Non
               environment: str | None = None, *, level: str | int = "INFO", json: bool = True,
               stream: TextIO | None = None, keep: Iterable[str] = (),
               quiet: Iterable[str] = DEFAULT_QUIET, silence_paths: Iterable[str] = DEFAULT_SILENCE_PATHS,
-              capture: Iterable[str] = DEFAULT_CAPTURE) -> Any:
+              capture: Iterable[str] = DEFAULT_CAPTURE, callsite: bool | None = None) -> Any:
     """Set up structlog and stdlib logging to write standard-compliant JSON lines.
 
     service_name, service_version, environment: the resource fields on every line. They
@@ -170,6 +198,9 @@ def configure(service_name: str | None = None, service_version: str | None = Non
     keep: field names never redacted (e.g. "user.email" when it is required).
     quiet: loggers set to WARNING. silence_paths: health/metrics paths dropped from logs.
     capture: loggers whose own handlers are removed so they go through this setup.
+    callsite: add code.file.path, code.line.number and code.function.name (where the line
+        was logged), for `logwarden check --sarif`. Default: LOGWARDEN_CALLSITE=1, which the
+        pytest plugin sets while capturing.
 
     Safe to call again (e.g. in tests): it replaces its own handler. Returns a structlog logger.
     Run uvicorn with log_config=None so it doesn't install its own handlers afterwards.
@@ -200,6 +231,10 @@ def configure(service_name: str | None = None, service_version: str | None = Non
         _redactor(frozenset(keep)),
         _silencer(paths),
     ]
+    if callsite is None:
+        callsite = os.environ.get("LOGWARDEN_CALLSITE", "").lower() in ("1", "true", "yes")
+    if callsite:
+        shared.insert(3, _callsite())
     renderer = (structlog.processors.JSONRenderer(default=_json_default, ensure_ascii=False) if json
                 else structlog.dev.ConsoleRenderer())
     formatter = structlog.stdlib.ProcessorFormatter(
