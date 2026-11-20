@@ -34,6 +34,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx`; base snapshot through the Actions cache, PR comment, report artifact. CI jobs `action`, `review` and `review-readonly` exercise it |
 | `Dockerfile` | Image `ghcr.io/ingeniator/logwarden`: Weaver and semconv downloaded at build time, so it works offline |
 | `docs/recipes/`, `examples/recipes/` | Node, Go and Java logger setups; `examples/recipes/check.sh` runs each example and checks its output (CI job `recipes`) |
+| `mkdocs.yml`, `docs_hooks.py`, `.github/workflows/pages.yml` | Docs site https://ingeniator.github.io/logwarden/ from `docs/`; the home page is `README.md`, release notes join the nav automatically. Build: `uvx --with mkdocs-material==9.5.50 --from mkdocs==1.6.1 mkdocs build` (strict: broken links fail) |
 | `tests/golden/` | Reviewed full output for the example files. Regenerate only on purpose (`make golden`), review the diff, and explain it in the release notes |
 
 ## Commands

@@ -11,3 +11,4 @@ examples/recipes/*/target/
 examples/recipes/*/logs.jsonl
 examples/recipes/*/otlp.jsonl
 logwarden-capture.jsonl
+site/

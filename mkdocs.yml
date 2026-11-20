@@ -1,0 +1,54 @@
+site_name: logwarden
+site_description: "Tests for your logs: check that services write JSON logs that follow OpenTelemetry semantic conventions, in CI and for AI agents."
+site_url: https://ingeniator.github.io/logwarden/
+repo_url: https://github.com/Ingeniator/logwarden
+repo_name: Ingeniator/logwarden
+edit_uri: edit/main/docs/
+copyright: Apache-2.0
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+validation:
+  links: {not_found: warn, anchors: warn, absolute_links: warn, unrecognized_links: warn}
+
+hooks:
+  - docs_hooks.py
+
+# Release notes are added to the nav by docs_hooks.py, newest first.
+nav:
+  - Home: index.md
+  - The standard: standard.md
+  - Rules: rules.md
+  - Integration guide: integration.md
+  - Setup recipes:
+      - Node (pino): recipes/node.md
+      - Go (slog): recipes/go.md
+      - Java (logback): recipes/java.md
+  - Roadmap: roadmap.md
