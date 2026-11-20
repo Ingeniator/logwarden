@@ -91,7 +91,7 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Event catalog: `logwarden catalog`, a committed `logwarden-events.toml`, and the rule
   `adr_event_catalog` when it is configured.
 
-### M6 (v0.8.0): findings on the source line; analyse Kibana exports
+### M6 (v0.8.0): findings on the source line; analyse Kibana exports (done)
 - SARIF from `check` (callsite fields from `configure(callsite=True)`) and `lint-code`; the
   Action uploads it to code scanning.
 - `check` reads Kibana CSV reports, Elasticsearch `_search` responses and NDJSON dumps.
