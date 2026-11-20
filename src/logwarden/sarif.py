@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from urllib.parse import quote
 from pathlib import Path
 
 from logwarden import __version__, data, report
@@ -27,7 +28,9 @@ def uri(path: str, root: str | None = None) -> str:
             rel = None
         if rel and rel != ".." and not rel.startswith("../"):
             return rel
-        return Path(path).as_uri() if os.path.isabs(path) else p
+        if p.startswith("/"):      # a POSIX path (also when the logs come from Linux and we run on Windows)
+            return "file://" + quote(p)
+        return Path(path).as_uri()
     p = p.removeprefix("./")
     if root and not os.path.isabs(root):
         p = p.removeprefix(root.replace("\\", "/").removeprefix("./").strip("/") + "/")

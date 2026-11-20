@@ -30,7 +30,7 @@ def missing_note(result: dict) -> str | None:
     if not cols:
         return None
     return (f"The export has no column for {', '.join(cols)}, so these fields weren't checked. "
-            "Export `_source` (or these columns) to check them.")
+            "Export all fields (no columns selected in Discover) to check them.")
 
 
 def _where(line) -> str:

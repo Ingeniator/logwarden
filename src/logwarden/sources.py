@@ -203,8 +203,12 @@ def _csv(text: str, src: Source, types: Callable[[], dict[str, str]]) -> Loaded:
         return Loaded([], 0, "csv")
     except csv.Error as e:
         raise SourceError(f"not a CSV file: {e}") from e
-    whole = [c for c in ("_source", *([src.message_field] if src.message_field else ["log", "message"]))
-             if c in header]
+    # Columns that hold the whole line: _source and the configured message_field always;
+    # without one, log or message only when the cell is a JSON object (else it's a plain message).
+    explicit = [c for c in ("_source", src.message_field) if c and c in header]
+    implicit = [] if src.message_field else [c for c in ("log", "message") if c in header]
+    # "All fields" exports repeat each text field as a .keyword sub-field: the same value again.
+    skip = _ES_META | {h for h in header if h.endswith(".keyword") and h[:-len(".keyword")] in header}
     typemap: dict[str, str] | None = None
     items, columns_used = [], False
     try:
@@ -212,20 +216,29 @@ def _csv(text: str, src: Source, types: Callable[[], dict[str, str]]) -> Loaded:
             if not any(cell.strip() for cell in row):
                 continue
             cells = {h: _unescape(row[i]) for i, h in enumerate(header) if i < len(row)}
-            obj = next((o for c in whole if (o := _json_object(cells.get(c, ""))) is not None), None)
-            doc_id = cells.get("_id") or None
-            if obj is None:
+            doc_id = cells.get("_id") if cells.get("_id") not in (None, "", "-") else None
+            line = next((cells[c] for c in explicit if cells.get(c, "") not in ("", "-")), None)
+            if line is None:
+                line = next((cells[c] for c in implicit if _json_object(cells.get(c, "")) is not None), None)
+            if line is not None:
+                # The whole line is in one column (_source, or Fluent Bit's log): use it as is.
+                obj = _json_object(line)
+                if obj is None:
+                    items.append(Item(n, None, line, "plain text", doc_id, reader.line_num))
+                    continue
+            else:
                 columns_used = True
                 if typemap is None:
                     typemap = types()
+                # Kibana writes "-" for a field the document doesn't have.
                 obj = {h: _coerce(v, typemap.get(h)) for h, v in cells.items()
-                       if v != "" and h not in _ES_META}
+                       if v not in ("", "-") and h not in skip}
             items.append(Item(n, obj, id=doc_id, file_line=reader.line_num))
     except csv.Error as e:
         raise SourceError(f"CSV row {reader.line_num}: {e}") from e
     missing = []
     if columns_used:
-        present = {h for h in header if not ignored(h, src.ignore_fields)}
+        present = {h for h in header if h not in skip and not ignored(h, src.ignore_fields)}
         missing = [f for f in REQUIRED if f not in present]
     return Loaded(items, len(items), "csv", missing)
 

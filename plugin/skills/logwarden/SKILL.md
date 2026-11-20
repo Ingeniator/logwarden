@@ -84,7 +84,7 @@ Full standard: the MCP tool `get_standard`, or https://github.com/Ingeniator/log
   `logwarden catalog <logs> -o logwarden-events.toml`) and mention it in your summary.
   Prefer an existing event over a near-duplicate name; if the finding is a typo, fix the name.
 - **Production logs:** when asked to audit what services log, use a Kibana CSV export
-  (with `_source`) or an Elasticsearch `_search` response: `logwarden check export.json --json`.
+  (all fields) or an Elasticsearch `_search` response: `logwarden check export.json --json`.
   For Fluent Bit records add `--message-field log` and `--ignore-field kubernetes` (or the
   project's `[source]` config). Summarise by `services[]` (compliance, top rule) and never
   quote logged values from the export.

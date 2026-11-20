@@ -1,0 +1,5 @@
+timestamp,level,event,logger,status,"http_route","foo_bar","service.name","service.version","deployment.environment.name","trace_id","span_id","user.id",password,"kubernetes.pod_name",stream
+"Nov 14, 2026 @ 10:00:00.000",info,"Loaded 3 models",x,200,"/a",1,yallmp,"-",dev,"-","-","-","-","api-7d9f",stdout
+"-","-","-","-","-","-","-","-","-","-","-","-","-","-","api-7d9f",stdout
+"Nov 14, 2026 @ 10:00:01.000",error,"upstream_call_failed","app.clients.llm","-","-","-",yallmp,1,production,"-","-","-","-","api-7d9f",stdout
+"Nov 14, 2026 @ 10:00:02.000",info,"user_logged_in","app.auth","-","-","-",yallmp,1,production,4BF92F3577B34DA6A3CE929D0E0E4736,00f067aa0ba902b7,"u_42",hunter2,"api-7d9f",stdout

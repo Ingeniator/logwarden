@@ -100,7 +100,7 @@ def test_claim2_missing_columns_are_not_reported(tmp_path):
     assert r["input"]["missing_columns"] == ["service.version"]
     assert not any(f["rule"] == "adr_missing_required" for f in r["findings"])
     text = run_cli("check", tmp_path / "partial.csv", cwd=tmp_path).stdout
-    assert "no column for service.version" in text and "_source" in text
+    assert "no column for service.version" in text and "Export all fields" in text
     # With _source the whole line is there, so the missing field is reported.
     obj = dict(zip(keys, rows[0]))
     r = _check(tmp_path, "whole.csv", _csv(["_source"], [[json.dumps(obj)]]))
@@ -275,3 +275,30 @@ def test_claim4_service_filter(tmp_path):
     assert {s["service"] for s in r["services"]} == {"billing", "search"}
     assert r["records"] == 3 and r["skipped_lines"] == 0
     assert all(f["service"] == "billing" for f in r["findings"])
+
+
+# ------------------------------------------------------------ real exports (tests/data/exports/README.md)
+
+def test_claim2_3_real_exports_give_the_bare_counts(tmp_path):
+    from conftest import DATA
+    want = _counts(_check(tmp_path, "bare.jsonl", BAD))
+    fluent = ["--message-field", "log", "--ignore-field", "kubernetes", "--ignore-field", "stream",
+              "--ignore-field", "@timestamp"]
+    exports = DATA / "exports"
+    for name, fmt in [("es-raw.search.json", "es"), ("es-merged.scroll.ndjson", "es"),
+                      ("es-raw.elasticdump.ndjson", "jsonl"), ("kibana-raw-all-fields.csv", "csv"),
+                      ("kibana-merged-all-fields.csv", "csv"), ("fluent-bit-raw.jsonl", "jsonl"),
+                      ("fluent-bit-merged.jsonl", "jsonl")]:
+        r = run_cli("check", exports / name, "--json", *fluent, cwd=tmp_path)
+        res = json.loads(r.stdout)
+        assert res["input"]["format"] == fmt, name
+        assert _counts(res) == want, name
+        assert res["input"]["missing_columns"] == [], name
+    # Without [source], Fluent Bit's own fields are unknown fields.
+    r = json.loads(run_cli("check", exports / "fluent-bit-raw.jsonl", "--json", cwd=tmp_path).stdout)
+    assert _counts(r) != want
+    # Picked columns without `log`: the plain-text line can't be rebuilt; the others still are.
+    r = json.loads(run_cli("check", exports / "kibana-merged-picked-columns.csv", "--json", *fluent,
+                           cwd=tmp_path).stdout)
+    assert "adr_non_json_line" not in _counts(r)
+    assert all(_counts(r).get(k, 0) >= n for k, n in want.items() if k != "adr_non_json_line")

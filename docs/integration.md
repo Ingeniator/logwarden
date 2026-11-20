@@ -421,7 +421,7 @@ read these formats and detect which one a file is (or set `--format`):
 
 | Export | How to get it | `--format` |
 |---|---|---|
-| Kibana Discover CSV report | Discover → pick a time range and a query → Share → CSV. Add the `_source` column for whole lines | `csv` |
+| Kibana Discover CSV report | Discover → pick a time range and a query, select no columns (all fields) → Share → CSV | `csv` |
 | Elasticsearch `_search` response | Kibana Dev Tools or `curl` (below); one response, a JSON array of scroll pages, or one page per line | `es` |
 | One document per line | `elasticdump --type=data`, or any NDJSON of documents (bare, or with `_source`) | `jsonl` |
 
@@ -436,12 +436,19 @@ logwarden check export.json --html report.html
 Findings refer to the row or hit number instead of a line, and show the document `_id` when
 the export has it.
 
-**CSV without `_source`.** With one column per field, CSV loses the value types, so
-logwarden takes them from the registry (`"200"` becomes the number 200 for
-`http.response.status_code`). It also undoes Kibana's escaping of values that start with
-`-`, `=`, `+` or `@`, and thousands separators. If the export leaves out a required field's
-column, that field isn't reported as missing: it may be in the logs and just not exported.
-The output names the missing columns. Exporting `_source` avoids all of this.
+**CSV.** A Kibana CSV has one column per field. When a column holds the whole line (Fluent
+Bit's `log` with `message_field = "log"`, or `_source` from other tools), that line is used.
+Otherwise the record is rebuilt from the columns:
+
+- Value types come from the registry, because CSV loses them (`"200"` becomes the number 200
+  for `http.response.status_code`).
+- Kibana's `-` for a missing value, its `.keyword` copies of text fields, its escaping of
+  values that start with `-`, `=`, `+` or `@`, and thousands separators are undone.
+- If the export leaves out a required field's column, that field isn't reported as missing:
+  it may be in the logs and just not exported. The output names the missing columns.
+
+Export all fields (select no columns in Discover) to check everything. Kibana 8 exports a
+`_source` column as `-`, so selecting it doesn't help.
 
 **Fluent Bit records.** A log shipper adds its own fields, and Fluent Bit often keeps the
 service's line as a string in `log`. `[source]` (or the options of the same name) handles the
