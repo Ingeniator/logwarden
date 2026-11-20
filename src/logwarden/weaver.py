@@ -18,7 +18,7 @@ import sys
 import tarfile
 import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 WEAVER_VERSION = os.environ.get("WEAVER_VERSION", "v0.28.0")
 _BASE = "https://github.com/open-telemetry/weaver/releases/download"
@@ -72,8 +72,9 @@ def _stderr(msg: str) -> None:
 
 def _safe_members(t: tarfile.TarFile):
     for m in t.getmembers():
-        p = Path(m.name)
-        if p.is_absolute() or ".." in p.parts or m.issym() or m.islnk():
+        # Windows rules are the strictest: they also catch "\\x", "C:/x" and "C:x" on any OS.
+        p = PureWindowsPath(m.name)
+        if p.anchor or ".." in p.parts or m.issym() or m.islnk():
             raise WeaverError(f"unsafe path in archive: {m.name}")
         yield m
 

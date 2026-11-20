@@ -148,7 +148,7 @@ def test_archive_without_binary(no_weaver, monkeypatch):
         weaver.find(log=lambda m: None)
 
 
-@pytest.mark.parametrize("name", ["../evil", "/abs/evil"])
+@pytest.mark.parametrize("name", ["../evil", "/abs/evil", "C:/evil", "a/../../evil"])
 def test_unsafe_archive_paths_rejected(name):
     with tarfile.open(fileobj=io.BytesIO(_tar({name: b"x"}, mode="w")), mode="r") as t:
         with pytest.raises(weaver.WeaverError, match="unsafe path"):
