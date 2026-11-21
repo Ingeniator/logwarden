@@ -106,5 +106,13 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
   through Fluent Bit, with Kibana saved objects; a Kafka + Fluent Bit demo compose.
 - Weekly workflow that opens a PR for new Weaver and semconv pins.
 
+### M8 (v0.10.0): metrics
+- A [metrics standard](metrics-standard.md) on OTel metric semconv, with label rules shared
+  with logs, cardinality budgets, sensitive data and resource identity.
+- `check --signal metrics` on Prometheus text and OTLP JSON; `capture` receives `/v1/metrics`;
+  the same Weaver engine, Rego rules, baselines, reports, SARIF, Action and MCP.
+
 ### Later
-Nothing planned yet.
+- `watch` scrapes `/metrics` endpoints and checks them continuously.
+- `lint-code` rules for metric names and labels in instrument-creation calls.
+- Consistency across signals: the same attribute names in a service's logs and metrics.
