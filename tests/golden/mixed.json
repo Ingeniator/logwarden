@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "ok": false,
   "records": 5,
   "skipped_lines": 4,

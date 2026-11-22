@@ -103,8 +103,9 @@ def test_claim2_groups_and_order():
     assert groups[1]["logger"] == "worker" and groups[1]["event"] == "Loaded # models"
     assert sum(g["lines"] for g in groups) == 11                     # every line in exactly one group
     assert abs(sum(g["share"] for g in groups) - 100) < 0.5
-    head = report.fix_first_head({"fix_first": groups, "lines_with_violations": 11})
-    assert head == "the top 3 places cause 91% of the lines with violations"
+    res = {"fix_first": groups, "lines_with_violations": 11}
+    assert report.fix_first_head(res) == "the top 4 places cause 100% of the lines with violations"
+    assert report.fix_first_head(res, top=3) == "the top 3 places cause 91% of the lines with violations"
     assert len(check.fix_first(vs, limit=2)) == 2
 
 

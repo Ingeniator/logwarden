@@ -311,8 +311,7 @@ def cmd_fetch(a: argparse.Namespace) -> int:
             raise UsageError(f"can't write {a.output}: {e}") from e
     sample = f"the newest {got:,} of {matched:,}" if matched > got else f"all {got:,}"
     _err(f"fetched {sample} log lines from the last {a.since} of '{a.index}'"
-         + ("" if a.output == "-" else f" into {a.output}") + "; check it with: logwarden check "
-         + (a.output if a.output != "-" else "-"))
+         + ("" if a.output == "-" else f" into {a.output} (it holds logged values: delete it after the check)"))
     return 0
 
 

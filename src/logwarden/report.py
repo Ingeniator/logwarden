@@ -51,8 +51,11 @@ def place(g: dict) -> str:
     return f"logger {g['logger'] or '(none)'}, event {g['event'] or '(none)'}"
 
 
-def fix_first_head(result: dict, top: int = 3) -> str | None:
-    """'the top 3 places cause 62% of the lines with violations', or None if nothing to fix."""
+FIX_FIRST_SHOWN = 5
+
+
+def fix_first_head(result: dict, top: int = FIX_FIRST_SHOWN) -> str | None:
+    """'the top 3 places cause 62% of the lines with violations' for the places shown, or None."""
     groups = result.get("fix_first") or []
     if not groups:
         return None
@@ -136,7 +139,7 @@ def _md_report(result: dict, rows: int) -> str:
     if head := fix_first_head(result):
         out.append(f"\n#### Fix first\n\n{head[0].upper() + head[1:]}.\n\n"
                    "| Share | Lines | Where | Rules |\n|---|---|---|---|")
-        for g in result["fix_first"][:min(rows, 5)]:
+        for g in result["fix_first"][:FIX_FIRST_SHOWN]:
             out.append(f"| {g['share']}% | {g['lines']} | {_code(place(g))} | {_md(what_breaks(g))} |")
     if result["by_rule"]:
         out.append("\n#### Violations by rule\n\n| Count | Rule | Fix |\n|---|---|---|")
@@ -286,7 +289,7 @@ def html(result: dict, events: dict | None = None, title: str = "logwarden repor
         parts.append(f"<h2>Fix first</h2><p>{_h(head[0].upper() + head[1:])}.</p>" + _table(
             ["Share", "Lines", "Where", "Rules"],
             [[_h(f"{g['share']}%"), _h(g["lines"]), _c(place(g)), _h(what_breaks(g))]
-             for g in result["fix_first"]], {0, 1}))
+             for g in result["fix_first"][:FIX_FIRST_SHOWN]], {0, 1}))
     if show_services(result):
         parts.append("<h2>By service</h2>" + _table(
             ["Service", "Lines", "Violations", "Compliant lines", "Top rule"],

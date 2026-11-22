@@ -1,6 +1,6 @@
 logwarden: 5 records, 18 violations (4 blank or non-JSON lines)
 
-fix first: the top 3 places cause 57% of the lines with violations
+fix first: the top 5 places cause 86% of the lines with violations
   28.6%	2 lines	lines that aren't JSON	adr_non_json_line ×2
   14.3%	1 line	logger (none), event no level here	adr_missing_required ×2, adr_event_name ×1; fields: deployment.environment.name, service.version
   14.3%	1 line	logger c, event cache_hit	adr_semconv_prefix ×2, missing_attribute ×1; fields: big, db_rows, user_id

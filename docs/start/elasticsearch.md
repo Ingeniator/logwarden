@@ -32,7 +32,11 @@ Open one log document in Kibana's Discover and look at how the service's JSON li
 ```bash
 docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
   check logwarden-es.json --profile essential --message-field log --html report.html
+#                         leave out --message-field log if the fields are in the document ^
 ```
+
+The check needs no network. It exits with 1 when it found violations (expected on a first run),
+0 when there are none, and 2 when something is set up wrong.
 
 `--profile essential` checks the three things every service should pass as it is: no secrets or
 personal data, every line is JSON, and every line has `service.name`, `service.version` and
@@ -61,13 +65,15 @@ Then delete the export: `rm logwarden-es.json`.
 [GitLab](gitlab.md#production-logs-every-hour).
 
 **cron or a Kubernetes CronJob:** the same two commands, keeping the last snapshot to compare
-with and pushing the numbers to a Prometheus Pushgateway:
+with and pushing the numbers to a Prometheus Pushgateway. Put in your Elasticsearch address,
+index and Pushgateway, set `LOGWARDEN_ES_AUTH` in the job's environment, and add the
+`--network` option from step 1 if you needed it there:
 
 ```bash
 #!/bin/sh
 # Every hour: check the last hour, compare with the previous run, push the numbers.
 set -e
-cd /var/lib/logwarden                       # keeps last.json between runs
+mkdir -p /var/lib/logwarden && cd /var/lib/logwarden   # keeps last.json between runs
 COMPARE=""; [ -f last.json ] && COMPARE="--compare last.json"
 docker run --rm -e LOGWARDEN_ES_AUTH -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
   fetch --es https://elasticsearch.example.com:9200 --index 'logs-*' --since 1h -o es.json
@@ -79,7 +85,7 @@ rm -f es.json
 ```
 
 Import [`integrations/grafana/logwarden.json`](https://github.com/Ingeniator/logwarden/blob/main/integrations/grafana/logwarden.json)
-into Grafana (*Dashboards → New → Import*) for the share of lines with violations per service,
+into Grafana (*Dashboards → New → Import*, and pick the Prometheus that scrapes the Pushgateway) for the share of lines with violations per service,
 violations by rule, and the time of the last check, which shows when the schedule stops.
 
 ![The logwarden dashboard in Grafana: time since the last check, share of lines with violations, violations by rule and by service](../img/grafana-logwarden.png)
