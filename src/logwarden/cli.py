@@ -450,8 +450,11 @@ def cmd_setup(_: argparse.Namespace) -> int:
     """Download Weaver and the semantic conventions, so later checks work offline."""
     try:
         print(weaver.find())
-        model = weaver.semconv_model(weaver.semconv_version(data.path("registry") / "manifest.yaml"))
+        manifest = data.path("registry") / "manifest.yaml"
+        model = weaver.semconv_model(weaver.semconv_version(manifest))
         _info(f"semantic conventions: {model}", "semconv_ready")
+        model = weaver.genai_model(weaver.genai_version(manifest))
+        _info(f"GenAI semantic conventions: {model}", "semconv_ready")
     except weaver.WeaverError as e:
         raise UsageError(str(e)) from e
     return 0

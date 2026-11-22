@@ -125,6 +125,18 @@ def test_claim2_ready_for_standard(tmp_path):
     assert before - after == u                                              # exactly what init declared
 
 
+def _genai_tar(version: str) -> bytes:
+    import io
+    import tarfile
+    buf = io.BytesIO()
+    body = b"name: semantic-conventions-genai\nschema_url: https://opentelemetry.io/schemas/semconv-genai/" + version.encode() + b"\n"
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        info = tarfile.TarInfo(f"semantic-conventions-genai-{version}/model/manifest.yaml")
+        info.size = len(body)
+        t.addfile(info, io.BytesIO(body))
+    return buf.getvalue()
+
+
 def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
     import update_pins as up
@@ -133,20 +145,26 @@ def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
         dst = tmp_path / src.name
         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         monkeypatch.setattr(up, name, dst)
-    monkeypatch.setattr(up, "_get", lambda url: b"archive-bytes")
-    w_now, s_now = up.current()                                             # whatever is pinned
-    monkeypatch.setattr(up, "latest", lambda repo: {"weaver": w_now, "semantic-conventions": "v" + s_now}[repo])
+    genai = _genai_tar("0.2.0")
+    monkeypatch.setattr(up, "_get", lambda url: genai if "genai" in url else b"archive-bytes")
+    w_now, s_now, g_now = up.current()                                      # whatever is pinned
+    monkeypatch.setattr(up, "latest", lambda repo: {"weaver": w_now, "semantic-conventions": "v" + s_now,
+                                                    "semantic-conventions-genai": "v" + g_now}[repo])
     out = tmp_path / "out"
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     assert up.main([]) == 0                                                 # current: nothing to do
     assert "changed=false" in out.read_text(encoding="utf-8")
-    up.main(["--weaver", "v0.29.0", "--semconv", "1.46.0"])
+    up.main(["--weaver", "v0.29.0", "--semconv", "1.46.0", "--genai", "0.2.0"])
     import hashlib
     sha = hashlib.sha256(b"archive-bytes").hexdigest()
     w = up.WEAVER_PY.read_text(encoding="utf-8")
     assert '"WEAVER_VERSION", "v0.29.0"' in w and f'"1.46.0": "{sha}"' in w and f'"{s_now}":' in w
+    assert f'"0.2.0": "{hashlib.sha256(genai).hexdigest()}"' in w and f'"{g_now}":' in w
     m = up.MANIFEST.read_text(encoding="utf-8")
-    assert "schemas/1.46.0" in m and "semantic-conventions@v1.46.0[model]" in m
+    assert "semantic-conventions@v1.46.0[model]" in m and "semantic-conventions-genai@v0.2.0[model]" in m
+    assert "- schema_url: https://opentelemetry.io/schemas/semconv-genai/0.2.0\n" in m   # from the new archive
     g = up.GUIDE.read_text(encoding="utf-8")
     assert "Weaver binary (v0.29.0)" in g and "semantic-conventions v1.46.0" in g
-    assert f"changed=true\ntitle=Pins: Weaver {w_now} → v0.29.0, semconv {s_now} → 1.46.0" in out.read_text(encoding="utf-8")
+    assert "semantic-conventions-genai v0.2.0" in g
+    assert (f"changed=true\ntitle=Pins: Weaver {w_now} → v0.29.0, semconv {s_now} → 1.46.0, "
+            f"GenAI semconv {g_now} → 0.2.0") in out.read_text(encoding="utf-8")

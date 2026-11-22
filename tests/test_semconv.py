@@ -45,10 +45,12 @@ def test_offline_after_first_run_and_env_override(cli, tmp_path):
     assert offline.returncode == 0, offline.stderr
     assert "downloading" not in offline.stderr
 
-    model = next(cache.glob("semconv-*/semantic-conventions-*/model"))
+    model = next(cache.glob("semconv-1*/semantic-conventions-*/model"))
+    genai = next(cache.glob("semconv-genai-*/semantic-conventions-genai-*/model"))
     binary = os.environ.get("WEAVER") or shutil.which("weaver") or next(
         str(p) for p in cache.rglob("weaver*") if p.is_file() and p.name in ("weaver", "weaver.exe"))
     other = {**blocked, "LOGWARDEN_CACHE": str(tmp_path / "empty"), "LOGWARDEN_SEMCONV": str(model),
+             "LOGWARDEN_SEMCONV_GENAI": str(genai),
              "WEAVER": binary}
     r = cli("check", EXAMPLES / "bad.jsonl", cwd=tmp_path, env=other)
     assert r.returncode == 1 and "downloading" not in r.stderr

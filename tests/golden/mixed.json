@@ -60,7 +60,7 @@
       "title": "Deprecated semconv field",
       "hint": "Rename to the replacement named in the message.",
       "doc": "docs/rules.md#deprecated",
-      "example": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'."
+      "example": "Attribute 'gen_ai.system' is deprecated; reason = 'renamed', note = 'Replaced by `gen_ai.provider.name`.'."
     },
     {
       "rule": "type_mismatch",
@@ -173,7 +173,7 @@
       "event": "shutdown_started",
       "rule": "deprecated",
       "field": "gen_ai.system",
-      "message": "Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).\n'.",
+      "message": "Attribute 'gen_ai.system' is deprecated; reason = 'renamed', note = 'Replaced by `gen_ai.provider.name`.'.",
       "service": "s"
     },
     {

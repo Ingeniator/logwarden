@@ -1,6 +1,6 @@
 name: update-pins
 
-# Weekly: look for new Weaver and semantic-conventions releases. When there is one, update the
+# Weekly: look for new Weaver, semantic-conventions and GenAI semantic-conventions releases. When there is one, update the
 # pins (with the semconv archive's SHA-256), run the tests, and open a PR saying how they went.
 # A PR opened with GITHUB_TOKEN doesn't start other workflows, so the tests run here.
 on:
@@ -13,6 +13,9 @@ on:
         required: false
       semconv:
         description: semconv version to pin (e.g. 1.44.0); empty for the latest release
+        required: false
+      genai:
+        description: GenAI semconv version to pin (e.g. 0.2.0); empty for the latest release
         required: false
 
 permissions:
@@ -36,10 +39,12 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           WEAVER_IN: ${{ inputs.weaver }}
           SEMCONV_IN: ${{ inputs.semconv }}
+          GENAI_IN: ${{ inputs.genai }}
         run: |
           set -- 
           [ -n "$WEAVER_IN" ] && set -- "$@" --weaver "$WEAVER_IN"
           [ -n "$SEMCONV_IN" ] && set -- "$@" --semconv "$SEMCONV_IN"
+          [ -n "$GENAI_IN" ] && set -- "$@" --genai "$GENAI_IN"
           python scripts/update_pins.py "$@"
       - name: Run the tests with the new pins
         id: tests

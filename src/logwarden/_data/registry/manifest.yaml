@@ -2,5 +2,10 @@ name: logwarden
 description: Domain log fields allowed on top of OpenTelemetry semantic conventions.
 schema_url: https://github.com/Ingeniator/logwarden/schemas/0.1.0
 dependencies:
-  - schema_url: https://opentelemetry.io/schemas/1.45.0
-    registry_path: https://github.com/open-telemetry/semantic-conventions@v1.45.0[model]
+  # The GenAI semantic conventions (gen_ai.*, openai.*, mcp.*, a2a.*, aws.bedrock.*), which
+  # depend on the semantic conventions. logwarden points that dependency at
+  # https://github.com/open-telemetry/semantic-conventions@v1.45.0[model] (the semconv pin),
+  # without semconv's directories that GenAI replaces (gen-ai, mcp, openai: only deprecated
+  # copies of the moved fields), so each field has one definition (check.base_registry).
+  - schema_url: https://opentelemetry.io/schemas/semconv-genai-dev/0.1.0-dev
+    registry_path: https://github.com/open-telemetry/semantic-conventions-genai@v0.1.0[model]

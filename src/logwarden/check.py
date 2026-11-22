@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -556,18 +557,36 @@ def load_baseline(path: Path) -> dict:
 
 
 def base_registry(into: Path) -> Path:
-    """logwarden's registry with the semconv dependency pointing at a local cached copy."""
+    """logwarden's registry, depending on local copies of the GenAI semantic conventions and the
+    semantic conventions: logwarden -> GenAI -> semconv without the directories GenAI replaces.
+
+    Semconv keeps deprecated copies of the fields that moved to GenAI (in gen-ai/, mcp/,
+    openai/). With both loaded, Weaver sees each such field twice and uses whichever group comes
+    last, so current GenAI fields could be reported as deprecated."""
     src = data.path("registry")
     manifest = src / "manifest.yaml"
-    model = weaver.semconv_model(weaver.semconv_version(manifest))
-    into.mkdir(parents=True, exist_ok=True)
+    semconv = weaver.semconv_model(weaver.semconv_version(manifest))
+    genai = weaver.genai_model(weaver.genai_version(manifest))
+    replaced = {p.name for p in genai.iterdir() if p.is_dir()}
+    sc, ga, own = into / "semconv", into / "genai", into / "logwarden"
+    shutil.copytree(semconv, sc, ignore=lambda d, names: replaced & set(names) if Path(d) == semconv else ())
+    shutil.copytree(genai, ga)
+    _point_at(ga / "manifest.yaml", (ga / "manifest.yaml").read_text(encoding="utf-8"), sc)
+    own.mkdir(parents=True)
     for f in src.iterdir():
         if f.is_file() and f.name != "manifest.yaml":
-            (into / f.name).write_bytes(f.read_bytes())
-    text = re.sub(r"(registry_path:\s*)\S+", lambda m: m.group(1) + model.as_posix(),
-                  manifest.read_text(encoding="utf-8"), count=1)
-    (into / "manifest.yaml").write_text(text, encoding="utf-8")
-    return into
+            (own / f.name).write_bytes(f.read_bytes())
+    _point_at(own / "manifest.yaml", manifest.read_text(encoding="utf-8"), ga)
+    return own
+
+
+def _point_at(manifest: Path, text: str, target: Path) -> None:
+    """Write a manifest whose (only) dependency is the local registry at target."""
+    text, n = re.subn(r"^(\s*registry_path:\s*)\S+", lambda m: m.group(1) + target.as_posix(), text,
+                      count=1, flags=re.M)
+    if n != 1:
+        raise CheckError(f"no registry_path in {manifest.name}")
+    manifest.write_text(text, encoding="utf-8")
 
 
 def _fields_registry(fields: Path, into: Path, base: Path) -> Path:

@@ -49,8 +49,9 @@ Two things need the network, and they are separate:
      GitHub is reachable, copy `/opt/logwarden` to the machines or runner image, and set
      `LOGWARDEN_CACHE=/opt/logwarden` there. The cache holds the binary for that machine's OS
      and CPU.
-  3. **Your own copies.** Set `WEAVER` to a Weaver binary (v0.28.0) and `LOGWARDEN_SEMCONV` to
-     the `model` directory of semantic-conventions v1.45.0.
+  3. **Your own copies.** Set `WEAVER` to a Weaver binary (v0.28.0), `LOGWARDEN_SEMCONV` to
+     the `model` directory of semantic-conventions v1.45.0, and `LOGWARDEN_SEMCONV_GENAI` to the
+     `model` directory of semantic-conventions-genai v0.1.0.
 
 ## Node, Go, Java: setup recipes
 
