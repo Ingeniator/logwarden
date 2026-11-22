@@ -18,6 +18,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write          # fallback when Actions may not open PRs (Settings > Actions > General)
 
 concurrency:
   group: update-pins
@@ -71,4 +72,9 @@ jobs:
             echo
             echo "Before merging: note the change in the next release notes (findings can change with semconv)."
           } > body.md
-          gh pr create --base main --head "$branch" --title "$TITLE" --body-file body.md
+          if ! gh pr create --base main --head "$branch" --title "$TITLE" --body-file body.md; then
+            # "Allow GitHub Actions to create and approve pull requests" is off: ask a person to open it.
+            url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+            { echo "The branch \`$branch\` has the new pins. Actions may not open PRs in this repository, so open it here: $url"; echo; cat body.md; } > issue.md
+            gh issue create --title "$TITLE" --body-file issue.md
+          fi
