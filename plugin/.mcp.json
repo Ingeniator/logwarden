@@ -2,7 +2,7 @@
   "mcpServers": {
     "logwarden": {
       "command": "uvx",
-      "args": ["--from", "logwarden[mcp]==0.8.1", "logwarden", "mcp"]
+      "args": ["--from", "logwarden[mcp]==0.9.0", "logwarden", "mcp"]
     }
   }
 }

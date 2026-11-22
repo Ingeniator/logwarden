@@ -1,5 +1,11 @@
 logwarden: 3 records, 10 violations (1 blank or non-JSON lines)
 
+fix first: the top 4 places cause 100% of the lines with violations
+  25.0%	1 line	logger app.auth, event user_logged_in	adr_sensitive_data ×1, adr_trace_context ×1; fields: password, trace_id
+  25.0%	1 line	logger app.clients.llm, event upstream_call_failed	adr_failure_context ×1
+  25.0%	1 line	logger x, event Loaded # models	adr_banned_synonym ×1, adr_environment_value ×1, adr_event_name ×1, adr_missing_required ×1, adr_semconv_prefix ×1, missing_attribute ×1; fields: deployment.environment.name, foo_bar, http_route, service.version, status
+  25.0%	1 line	lines that aren't JSON	adr_non_json_line ×1
+
   1	adr_banned_synonym - Banned synonym for an OTel semconv field
 	fix: Rename the field to the semconv name given in the message.
 	e.g. §2: 'status' is a banned synonym; use http.response.status_code

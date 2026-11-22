@@ -32,6 +32,9 @@ Your job is to make sure the code you write produces logs that pass.
   sloglint) are in docs/integration.md §6 of the logwarden repo.
 - Node, Go and Java services: follow the setup recipes (docs/recipes/ in the logwarden repo)
   instead of inventing a logger configuration.
+- On a service that has never been checked, start with `--profile essential` (or
+  `profile = "essential"` in the config): secrets, non-JSON lines and required fields. Fix the
+  places listed under "Fix first" in the output before anything else.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
   logging setup, never from call sites. In a Python service without a compliant setup,
   suggest `logwarden.logging.configure(...)` (`logwarden[structlog]`); in one that already

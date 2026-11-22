@@ -13,7 +13,7 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     import tomli as tomllib
 
-KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams", "events", "source"}
+KNOWN_KEYS = {"fields", "baseline", "disable", "upstreams", "events", "source", "profile"}
 SOURCE_KEYS = {"format", "message_field", "ignore_fields", "service_field"}
 DEFAULT_FIELDS = "logwarden-fields.yaml"
 DEFAULT_BASELINE = ".logwarden-baseline.json"
@@ -27,6 +27,7 @@ class Config:
     disable: dict[str, str] = field(default_factory=dict)
     upstreams: list[str] = field(default_factory=list)
     input: dict = field(default_factory=dict)   # [source]: format, message_field, ignore_fields, service_field
+    profile: str | None = None          # rule profile: essential or standard
     source: str | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)   # fatal: exit 2
@@ -65,6 +66,12 @@ def load(cwd: Path) -> Config:
                               'e.g. upstreams = ["api.openai.com"]')
     if "source" in data:
         _source(data["source"], cfg)
+    if "profile" in data:
+        from logwarden.check import PROFILES
+        if data["profile"] in PROFILES:
+            cfg.profile = data["profile"]
+        else:
+            cfg.errors.append(f"{cfg.source}: profile must be one of {', '.join(PROFILES)}")
     return cfg
 
 

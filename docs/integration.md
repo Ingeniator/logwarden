@@ -23,7 +23,7 @@ access in CI? See [Without internet access](#without-internet-access).
 conventions inside:
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 check logs.jsonl
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 check logs.jsonl
 ```
 
 ### Without internet access
@@ -127,7 +127,7 @@ instrumentation scope) and then runs the same check:
 ```bash
 logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
 logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
-docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 capture --host 0.0.0.0
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 capture --host 0.0.0.0
 ```
 
 With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
@@ -142,13 +142,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.8.1
+- uses: Ingeniator/logwarden@v0.9.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.8.1 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.9.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -194,7 +194,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.8.1
+  - uses: Ingeniator/logwarden@v0.9.0
     with:
       logs: logs.jsonl
       comment: "true"
@@ -226,7 +226,7 @@ logwarden:
   extends: .logwarden
   needs: [{job: test, artifacts: true}]     # the job that writes logs.jsonl
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.8.1   # your copy of ghcr.io/ingeniator/logwarden
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.9.0   # your copy of ghcr.io/ingeniator/logwarden
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
@@ -245,6 +245,9 @@ logwarden:
 - `LOGWARDEN_ARGS` passes more options, such as `--source-root /app` or `--message-field log`.
 - To post `report.md` as a merge-request note, call the Notes API with a token that has the
   `api` scope; the job token can't post notes.
+- `.logwarden-production` in the same file checks production logs from Elasticsearch on a
+  pipeline schedule and compares each run with the previous one; see
+  [Start here: GitLab](start/gitlab.md#production-logs-every-hour).
 
 ### Findings on the source line (SARIF)
 
@@ -268,7 +271,7 @@ permissions:
   security-events: write        # for sarif: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.8.1
+  - uses: Ingeniator/logwarden@v0.9.0
     with:
       logs: logs.jsonl
       sarif: "true"
@@ -277,7 +280,7 @@ steps:
 `lint-code --sarif FILE` does the same for the source rules. Upload it in its own step:
 
 ```yaml
-  - run: uvx logwarden==0.8.1 lint-code --sarif lint.sarif src/ || true
+  - run: uvx logwarden==0.9.0 lint-code --sarif lint.sarif src/ || true
   - uses: github/codeql-action/upload-sarif@v3
     with: {sarif_file: lint.sarif, category: logwarden-lint-code}
 ```
@@ -437,7 +440,7 @@ fields and failure context are actually present, so it doesn't replace logwarden
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Ingeniator/logwarden
-    rev: v0.8.1
+    rev: v0.9.0
     hooks:
       - id: logwarden-lint-code
 ```
@@ -456,6 +459,18 @@ read these formats and detect which one a file is (or set `--format`):
 | Kibana Discover CSV report | Discover → pick a time range and a query, select no columns (all fields) → Share → CSV | `csv` |
 | Elasticsearch `_search` response | Kibana Dev Tools or `curl` (below); one response, a JSON array of scroll pages, or one page per line | `es` |
 | One document per line | `elasticdump --type=data`, or any NDJSON of documents (bare, or with `_source`) | `jsonl` |
+
+`logwarden fetch` gets the newest lines of a time window for you (credentials from
+`LOGWARDEN_ES_AUTH`), and a scheduled job can run it every hour; see
+[Start here: Elasticsearch / Kibana](start/elasticsearch.md):
+
+```bash
+LOGWARDEN_ES_AUTH='user:password' logwarden fetch --es "$ES" --index 'logs-*' --since 24h \
+  --query 'service.name:orders-api' -o export.json
+logwarden check export.json --html report.html --pushgateway http://pushgateway:9091
+```
+
+The same with `curl`:
 
 ```bash
 curl -s -H 'Content-Type: application/json' "$ES/logs-*/_search?size=10000" -d '{

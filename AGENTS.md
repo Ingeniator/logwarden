@@ -13,13 +13,15 @@ applying the project's `disable` list and baseline (`check.Policy`).
 
 | Path | Role |
 |---|---|
-| `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
-| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), `disable` and baseline, the result dict |
+| `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `fetch`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
+| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), profiles (`PROFILES`), `disable` and baseline, "Fix first" (`fix_first`), the result dict |
 | `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv release archive (pinned SHA-256 in `SEMCONV_SHA256`) |
 | `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit), the self-contained HTML report, Prometheus metrics (`--metrics`) |
 | `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
 | `src/logwarden/sarif.py` | SARIF 2.1.0 for `check --sarif` (location from `code.file.path`/`code.line.number`) and `lint-code --sarif`; schema in `tests/data/` |
 | `src/logwarden/codequality.py`, `ci/gitlab/logwarden.gitlab-ci.yml` | GitLab Code Quality report (`--codequality`, same locations and fingerprints as SARIF, one fingerprint per finding) and the GitLab CI template (Docker image, offline, allowed failure on exit 1; never `-o`, whose work files hold logged values) |
+| `src/logwarden/fetch.py` | `logwarden fetch` (newest lines of a window from Elasticsearch; credentials only from the environment) and the Pushgateway push (`check --pushgateway`) |
+| `integrations/grafana/logwarden.json` | Grafana dashboard for the pushed metrics (scheduled checks) |
 | `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |
@@ -32,6 +34,8 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/testing.py` | `capture`, `assert_failure_logged`, `assert_logs_clean` |
 | `src/logwarden/pytest_plugin.py` | Capture plugin (`LOGWARDEN_CAPTURE`), registered through the `pytest11` entry point |
 | `src/logwarden/mcp_server.py` | MCP server (`logwarden mcp`, `[mcp]` extra) |
+| `docs/start/` | The four "Start here" pages (Elasticsearch, GitLab, GitHub, agents): the recommended path for a new team. Keep them short and runnable word for word |
+| `STABILITY.md` | What is public interface and how it changes; `tests/test_adoption.py` checks its rule ids and env vars |
 | `docs/standard.md`, `docs/rules.md` | The standard and one section per rule. Copied into the wheel |
 | `plugin/`, `.claude-plugin/marketplace.json` | Claude Code plugin (skill, MCP config, `/logwarden:check`) and its marketplace |
 | `action.yml` | GitHub Action: runs logwarden from its own checkout with `uvx`; base snapshot through the Actions cache, PR comment, report artifact. CI jobs `action`, `review` and `review-readonly` exercise it |
@@ -69,7 +73,9 @@ Do all of these in one change:
    examples changes the goldens: run `make golden`, review the diff, and say why in the
    commit. `tests/test_rules_wired.py` fails if a rule lacks a `rules.json` entry, a
    `docs/rules.md` section, a link from `docs/standard.md`, or a line in `bad.jsonl`.
-6. Add a row to the rule table in `README.md`.
+6. Add a row to the rule table in `README.md`, and the id to `STABILITY.md`.
+7. Decide whether it belongs in the `essential` profile (`check.PROFILES`). Only rules that
+   every service should pass as it is go there, and the list is a public interface.
 
 Rego runs per sample (one log line or one attribute), so it can't check anything across
 a run, such as "never seen", or lines that aren't JSON objects. Write those in Python in
@@ -101,7 +107,7 @@ logged value of a possibly sensitive field.
 - Snapshots use the baseline's entry format (`make_baseline`), so a baseline also works as
   `--compare`. `--compare` never changes the exit code.
 - `capture` writes only the result to stdout; the wrapped command's stdout goes to stderr.
-- Rule ids, the `--json` keys and exit codes are a public interface for CI configs, agent
+- `STABILITY.md` lists the public interface. Rule ids, the `--json` keys and exit codes are a public interface for CI configs, agent
   prompts and the Action. Only add, never rename. Add a new id and keep the old one if needed.
 - Weaver 0.28 emits findings as `{id, level, message}`. `summarise` also accepts the older
   `advice_type`/`advice_level` names.

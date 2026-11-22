@@ -32,6 +32,13 @@ def text(result: dict, max_findings: int = 20) -> str:
         out.append(line)
     if result["violations"] == 0:
         out.append("OK")
+    for note in (report.profile_note(result), report.sample_note(result)):
+        if note:
+            out.append(note)
+    if head := report.fix_first_head(result):
+        out.append(f"\nfix first: {head}")
+        for g in result["fix_first"][:report.FIX_FIRST_SHOWN]:
+            out.append(f"  {g['share']}%\t{_n(g['lines'], 'line')}\t{report.place(g)}\t{report.what_breaks(g)}")
     for r in result["by_rule"]:
         block = f"\n  {r['count']}\t{r['rule']}"
         if _set(r.get("title")):

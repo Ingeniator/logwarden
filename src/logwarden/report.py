@@ -25,12 +25,58 @@ def show_services(result: dict) -> bool:
     return len(s) > 1 or (len(s) == 1 and s[0]["service"] != "(none)")
 
 
+def sample_note(result: dict) -> str | None:
+    inp = result.get("input") or {}
+    matched, got = inp.get("matched"), result["records"] + result["skipped_lines"]
+    if not matched or matched <= got:
+        return None
+    return (f"Sample: the export holds {got:,} of the {matched:,} log lines that matched the query, "
+            f"so the counts are for {100 * got / matched:.0f}% of them.")
+
+
 def missing_note(result: dict) -> str | None:
     cols = (result.get("input") or {}).get("missing_columns") or []
     if not cols:
         return None
     return (f"The export has no column for {', '.join(cols)}, so these fields weren't checked. "
             "Export all fields (no columns selected in Discover) to check them.")
+
+
+def place(g: dict) -> str:
+    """Where a fix_first group comes from, in words."""
+    if g["kind"] == "code":
+        return g["where"]
+    if g["kind"] == "non_json":
+        return "lines that aren't JSON"
+    return f"logger {g['logger'] or '(none)'}, event {g['event'] or '(none)'}"
+
+
+FIX_FIRST_SHOWN = 5
+
+
+def fix_first_head(result: dict, top: int = FIX_FIRST_SHOWN) -> str | None:
+    """'the top 3 places cause 62% of the lines with violations' for the places shown, or None."""
+    groups = result.get("fix_first") or []
+    if not groups:
+        return None
+    n = min(top, len(groups))
+    total = result.get("lines_with_violations") or sum(g["lines"] for g in groups)
+    share = round(100.0 * sum(g["lines"] for g in groups[:n]) / total) if total else 0
+    what = "place causes" if n == 1 else f"{n} places cause"
+    return f"the top {what} {share}% of the lines with violations"
+
+
+def what_breaks(g: dict) -> str:
+    rules = ", ".join(f"{r} ×{c}" for r, c in g["rules"].items())
+    return rules + (f"; fields: {', '.join(g['fields'])}" if g["fields"] else "")
+
+
+def profile_note(result: dict) -> str | None:
+    if result.get("profile", "standard") == "standard":
+        return None
+    n = result.get("outside_profile", 0)
+    return (f"Profile {result['profile']}: {n} more violation{'' if n == 1 else 's'} under the "
+            "standard profile (--profile standard).")
 
 
 def _where(line) -> str:
@@ -90,6 +136,11 @@ def _md_report(result: dict, rows: int) -> str:
             if cmp_["fixed"] > rows:
                 out.append(f"\n… and {cmp_['fixed'] - rows} more fixed")
 
+    if head := fix_first_head(result):
+        out.append(f"\n#### Fix first\n\n{head[0].upper() + head[1:]}.\n\n"
+                   "| Share | Lines | Where | Rules |\n|---|---|---|---|")
+        for g in result["fix_first"][:FIX_FIRST_SHOWN]:
+            out.append(f"| {g['share']}% | {g['lines']} | {_code(place(g))} | {_md(what_breaks(g))} |")
     if result["by_rule"]:
         out.append("\n#### Violations by rule\n\n| Count | Rule | Fix |\n|---|---|---|")
         for r in result["by_rule"][:rows]:
@@ -108,6 +159,9 @@ def _md_report(result: dict, rows: int) -> str:
                        f"{_code(s['top_rule'])} |")
         if len(svcs) > rows:
             out.append(f"\n… and {len(svcs) - rows} more services")
+    for note in (profile_note(result), sample_note(result)):
+        if note:
+            out.append(f"\n> {note}")
     if note := missing_note(result):
         out.append(f"\n> {note}")   # our own text; the column names are fixed field names
     if result["findings"]:
@@ -226,8 +280,16 @@ def html(result: dict, events: dict | None = None, title: str = "logwarden repor
                 [[_c(e["rule"]), _c(e["field"]), _c(e["event"]), _h(e["count"])]
                  for e in cmp_["fixed_entries"]], {3}))
 
+    for note in (profile_note(result), sample_note(result)):
+        if note:
+            parts.append(f"<p class=\"muted\">{_h(note)}</p>")
     if note := missing_note(result):
         parts.append(f"<p class=\"muted\">{_h(note.replace('`', ''))}</p>")
+    if head := fix_first_head(result):
+        parts.append(f"<h2>Fix first</h2><p>{_h(head[0].upper() + head[1:])}.</p>" + _table(
+            ["Share", "Lines", "Where", "Rules"],
+            [[_h(f"{g['share']}%"), _h(g["lines"]), _c(place(g)), _h(what_breaks(g))]
+             for g in result["fix_first"][:FIX_FIRST_SHOWN]], {0, 1}))
     if show_services(result):
         parts.append("<h2>By service</h2>" + _table(
             ["Service", "Lines", "Violations", "Compliant lines", "Top rule"],

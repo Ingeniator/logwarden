@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "ok": true,
   "records": 2,
   "skipped_lines": 0,
@@ -30,8 +30,13 @@
       "top_rule": null
     }
   ],
+  "profile": "standard",
+  "outside_profile": 0,
+  "lines_with_violations": 0,
+  "fix_first": [],
   "input": {
     "format": "jsonl",
-    "missing_columns": []
+    "missing_columns": [],
+    "matched": null
   }
 }
