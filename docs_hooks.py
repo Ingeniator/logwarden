@@ -2,7 +2,8 @@
 
 - The home page is README.md, with links into docs/ made relative so they stay on the site.
 - Links that leave docs/ (examples, AGENTS.md, ...) point at the file on GitHub.
-- Release notes are added to the nav, newest first, so a release needs no mkdocs.yml change.
+- Release notes are added to the nav, newest first, so a release needs no mkdocs.yml change;
+  versions not released yet are titled "(planned)".
 """
 import re
 from pathlib import Path
@@ -15,9 +16,15 @@ def _version(path: Path) -> tuple[int, ...]:
     return tuple(int(p) for p in path.stem.lstrip("v").split("."))
 
 
+def _title(path: Path) -> str:
+    """'v0.9.0 (planned)' until the notes say Released, so planned versions don't look shipped."""
+    status = next((ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.startswith("**Status:**")), "")
+    return path.stem if "Released" in status else f"{path.stem} (planned)"
+
+
 def on_config(config):
     releases = sorted((ROOT / "docs/releases").glob("v*.md"), key=_version, reverse=True)
-    config["nav"].append({"Release notes": [{p.stem: f"releases/{p.name}"} for p in releases]})
+    config["nav"].append({"Release notes": [{_title(p): f"releases/{p.name}"} for p in releases]})
     return config
 
 

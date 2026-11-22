@@ -102,7 +102,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
-  - uses: Ingeniator/logwarden@v0.8.0
+  - uses: Ingeniator/logwarden@v0.8.1
     with:
       logs: logs.jsonl
       comment: "true"
@@ -112,8 +112,11 @@ With `sarif: "true"` (and `security-events: write`), GitHub code scanning shows 
 on the source line that logged it, right in the PR diff. Python's `configure()` and the Go
 recipe add the call-site fields that make this work.
 
-GitLab and other CI systems run the same CLI with `--snapshot`, `--compare`, `--markdown` and
-`--html`; see [docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md).
+On GitLab, the [CI template](https://github.com/Ingeniator/logwarden/blob/main/ci/gitlab/logwarden.gitlab-ci.yml)
+runs the Docker image (no internet access needed) and writes a Code Quality report, so the
+merge request lists new and resolved findings. Other CI systems run the same CLI with
+`--snapshot`, `--compare`, `--markdown` and `--html`; see
+[docs/integration.md](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md).
 
 ### 2. Adopt it on an existing service
 
@@ -131,7 +134,7 @@ logwarden checks output, so the language doesn't matter.
 
 ```bash
 logwarden capture -o logs.jsonl -- npm test    # receive OTLP logs from any OTel SDK while the command runs
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.0 check logs.jsonl   # no Python needed
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 check logs.jsonl   # no Python needed
 ```
 
 There are setup recipes, with example output that passes, for
@@ -141,7 +144,8 @@ There are setup recipes, with example output that passes, for
 
 ### 4. Make good logs the default in Python
 
-One call sets up structlog and the standard library so that every line passes: required
+Optional: the check reads whatever JSON your own logger writes, so keep your setup if it
+already produces compliant lines. For new services, or to fix an old setup, one call sets up structlog and the standard library so that every line passes: required
 service fields, trace context, exceptions as semconv fields, redaction and quiet noisy
 libraries.
 
@@ -262,7 +266,8 @@ first.
 
 Requirements: Python 3.10+ on Linux, macOS or Windows, or the Docker image (linux/amd64 and
 linux/arm64), which works offline. Weaver and the semantic conventions are downloaded on first
-use, checked against pinned SHA-256 sums and cached. The core package has no dependencies
+use, checked against pinned SHA-256 sums and cached; see
+[Without internet access](https://github.com/Ingeniator/logwarden/blob/main/docs/integration.md#without-internet-access). The core package has no dependencies
 besides `tomli` on Python 3.10.
 
 **Stability.** Rule ids, the `--json` keys and exit codes are a public interface: they are only

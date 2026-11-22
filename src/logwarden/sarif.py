@@ -85,6 +85,31 @@ def _doc(rules: list[dict], results: list[dict], name: str) -> dict:
     }]}
 
 
+def message(v: dict) -> str:
+    """The rule message plus where it was found in the logs (never a logged value)."""
+    text = v["message"] or v["rule"]
+    if v.get("line") is not None:
+        text += f" (log line {v['line']}" + (f", event '{v['event']}'" if v.get("event") else "") + ")"
+    return text
+
+
+def locate(v: dict, log_uri: str | None, source_root: str | None) -> tuple[str | None, int | None, str | None]:
+    """(path, line, function) of a runtime finding: the source line that logged it, else its log line."""
+    if loc := v.get("loc"):
+        return uri(loc[0], source_root), loc[1], loc[2] or None
+    if log_uri:
+        # Search hits have no line in the file; viewers need a line, so use the first.
+        return log_uri, v.get("file_line") or 1, None
+    return None, None, None
+
+
+def identity(v: dict, log_uri: str | None, source_root: str | None) -> tuple:
+    """What makes a finding the same finding across commits: no line numbers, so it follows moved code."""
+    path, _, func = locate(v, log_uri, source_root)
+    where = (path, func) if v.get("loc") else (path, None)
+    return (v["rule"], v.get("field"), v.get("logger"), v.get("fp_event"), *where)
+
+
 def from_check(violations: list[dict], log_path: str | None = None, source_root: str | None = None) -> dict:
     """SARIF for runtime findings (`check --sarif`): the violations after disable/baseline."""
     ids = sorted({v["rule"] for v in violations}, key=str)
@@ -93,25 +118,13 @@ def from_check(violations: list[dict], log_path: str | None = None, source_root:
     results: list[dict] = []
     seen: dict[str, int] = {}
     for v in violations:
-        text = v["message"] or v["rule"]
-        if v.get("line") is not None:
-            text += f" (log line {v['line']}" + (f", event '{v['event']}'" if v.get("event") else "") + ")"
-        loc = v.get("loc")
-        if loc:
-            locations = [_location(uri(loc[0], source_root), loc[1])]
-            where = (uri(loc[0], source_root), loc[2])     # file and function, not the line
-        elif log_uri:
-            # Search hits have no line in the file; code scanning needs a line, so use the first.
-            locations = [_location(log_uri, v.get("file_line") or 1)]
-            where = (log_uri, None)
-        else:
-            locations, where = [], (None, None)
+        path, line, func = locate(v, log_uri, source_root)
         res = {"ruleId": v["rule"], "ruleIndex": index[v["rule"]], "level": "error",
-               "message": {"text": text}, "locations": locations,
-               "partialFingerprints": _fingerprints(seen, v["rule"], v.get("field"), v.get("logger"),
-                                                    v.get("fp_event"), *where)}
-        if loc and loc[2]:
-            res["locations"][0]["logicalLocations"] = [{"fullyQualifiedName": loc[2], "kind": "function"}]
+               "message": {"text": message(v)},
+               "locations": [_location(path, line)] if path else [],
+               "partialFingerprints": _fingerprints(seen, *identity(v, log_uri, source_root))}
+        if func:
+            res["locations"][0]["logicalLocations"] = [{"fullyQualifiedName": func, "kind": "function"}]
         results.append(res)
     return _doc([_rule(r) for r in ids], results, "logwarden")
 

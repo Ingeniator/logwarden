@@ -16,14 +16,32 @@ logwarden init --agent          # logwarden-fields.yaml + a logwarden section in
 
 Weaver, which does the actual checking, and the OpenTelemetry semantic conventions are
 downloaded on first run into the user cache directory (`logwarden setup` does it ahead of
-time). After that, checks work offline. Set `WEAVER` to use your own binary.
+time). After that, checks work offline. Set `WEAVER` to use your own binary. No internet
+access in CI? See [Without internet access](#without-internet-access).
 
 **No Python on the machine?** Use the Docker image, which has Weaver and the semantic
 conventions inside:
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.0 check logs.jsonl
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 check logs.jsonl
 ```
+
+### Without internet access
+
+Two things need the network, and they are separate:
+
+- **Installing logwarden**, from PyPI or the image registry. The package is pure Python with
+  no dependencies, so an internal PyPI mirror is enough.
+- **Weaver and the semantic conventions**, downloaded from GitHub on the first `check`. This is
+  what fails inside a closed network. Pick one:
+  1. **The Docker image**, mirrored into your registry. Both are inside it; nothing is
+     downloaded at run time. On GitLab, use the [CI template](#gitlab-ci).
+  2. **A prepared cache.** Run `LOGWARDEN_CACHE=/opt/logwarden logwarden setup` once where
+     GitHub is reachable, copy `/opt/logwarden` to the machines or runner image, and set
+     `LOGWARDEN_CACHE=/opt/logwarden` there. The cache holds the binary for that machine's OS
+     and CPU.
+  3. **Your own copies.** Set `WEAVER` to a Weaver binary (v0.28.0) and `LOGWARDEN_SEMCONV` to
+     the `model` directory of semantic-conventions v1.45.0.
 
 ## Node, Go, Java: setup recipes
 
@@ -33,6 +51,10 @@ checks: [Node (pino)](recipes/node.md), [Go (`log/slog`)](recipes/go.md),
 fields in §3 of the standard, or send logs over OTLP (below).
 
 ## Python: make compliant logs the default
+
+Optional. logwarden checks whatever JSON your logger writes, and the pytest capture plugin
+(§2) uses your app's own formatter, so a service with a tuned logging setup keeps it. Use
+`configure()` for new services, or where the existing setup fails the check.
 
 ```bash
 uv add 'logwarden[structlog]'
@@ -105,7 +127,7 @@ instrumentation scope) and then runs the same check:
 ```bash
 logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
 logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
-docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.0 capture --host 0.0.0.0
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 capture --host 0.0.0.0
 ```
 
 With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
@@ -120,13 +142,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.8.0
+- uses: Ingeniator/logwarden@v0.8.1
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.8.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.8.1 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -172,7 +194,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.8.0
+  - uses: Ingeniator/logwarden@v0.8.1
     with:
       logs: logs.jsonl
       comment: "true"
@@ -191,28 +213,36 @@ steps:
 - Using the Action more than once in a job: give each use its own `snapshot-id` and
   `artifact-name`.
 
-GitLab CI, keeping the target branch's snapshot as an artifact:
+### GitLab CI
+
+Copy [`ci/gitlab/logwarden.gitlab-ci.yml`](https://github.com/Ingeniator/logwarden/blob/main/ci/gitlab/logwarden.gitlab-ci.yml)
+into your repository and extend its hidden job:
 
 ```yaml
+include:
+  - local: ci/logwarden.gitlab-ci.yml
+
 logwarden:
-  image: python:3.13
-  script:
-    - pip install --quiet logwarden==0.8.0
-    - LOGWARDEN_CAPTURE=logs.jsonl pytest      # or however the job produces logs.jsonl
-    - |
-      COMPARE=""
-      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ] && curl -sfL -o base.zip \
-           --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/jobs/artifacts/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME/download?job=logwarden"; then
-        python -m zipfile -e base.zip base && COMPARE="--compare base/report/snapshot.json"
-      fi
-      logwarden check logs.jsonl -o report $COMPARE
-  artifacts:
-    when: always
-    paths: [report/report.html, report/report.md, report/snapshot.json]
+  extends: .logwarden
+  needs: [{job: test, artifacts: true}]     # the job that writes logs.jsonl
+  variables:
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.8.1   # your copy of ghcr.io/ingeniator/logwarden
+    LOGWARDEN_LOGS: logs.jsonl
 ```
 
-`report/report.md` can be posted as a merge-request note with the GitLab API.
+- It runs the Docker image, which has Weaver and the semantic conventions inside, so the job
+  needs no internet access. Mirror the image into your registry and pin it by digest if you like.
+- `--codequality` writes a [Code Quality report](https://docs.gitlab.com/ci/testing/code_quality/):
+  the merge request's Reports tab lists new and resolved findings (every tier); Ultimate also
+  marks them in the diff. Findings sit on the source line when the lines have `code.file.path`
+  and `code.line.number` (see SARIF below), else on their line in the log file.
+- `logwarden-report/` has `report.html` (linked from the merge request), `report.md` compared
+  with the target branch's snapshot, and `snapshot.json` for the next comparison.
+- Violations are an allowed failure (`allow_failure: exit_codes: [1]`): the pipeline passes with
+  a warning. A broken setup, exit 2, still fails. Remove `allow_failure` to make it a gate.
+- `LOGWARDEN_ARGS` passes more options, such as `--source-root /app` or `--message-field log`.
+- To post `report.md` as a merge-request note, call the Notes API with a token that has the
+  `api` scope; the job token can't post notes.
 
 ### Findings on the source line (SARIF)
 
@@ -236,7 +266,7 @@ permissions:
   security-events: write        # for sarif: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.8.0
+  - uses: Ingeniator/logwarden@v0.8.1
     with:
       logs: logs.jsonl
       sarif: "true"
@@ -245,7 +275,7 @@ steps:
 `lint-code --sarif FILE` does the same for the source rules. Upload it in its own step:
 
 ```yaml
-  - run: uvx logwarden==0.8.0 lint-code --sarif lint.sarif src/ || true
+  - run: uvx logwarden==0.8.1 lint-code --sarif lint.sarif src/ || true
   - uses: github/codeql-action/upload-sarif@v3
     with: {sarif_file: lint.sarif, category: logwarden-lint-code}
 ```
@@ -405,7 +435,7 @@ fields and failure context are actually present, so it doesn't replace logwarden
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Ingeniator/logwarden
-    rev: v0.8.0
+    rev: v0.8.1
     hooks:
       - id: logwarden-lint-code
 ```

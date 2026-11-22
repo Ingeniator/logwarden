@@ -1,0 +1,61 @@
+# logwarden for GitLab CI: findings in the merge request, no internet access needed.
+#
+# Copy this file into your repository (or a shared CI project) and extend the hidden job:
+#
+#   include:
+#     - local: ci/logwarden.gitlab-ci.yml
+#   logwarden:
+#     extends: .logwarden
+#     needs: [{job: test, artifacts: true}]   # the job that writes the logs, e.g. LOGWARDEN_CAPTURE=logs.jsonl pytest
+#     variables:
+#       LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.8.1   # your registry's copy of ghcr.io/ingeniator/logwarden
+#       LOGWARDEN_LOGS: logs.jsonl
+#
+# The image contains Weaver and the semantic conventions, so the job works offline.
+# It reports and doesn't block: violations (exit 1) are an allowed failure, a broken setup (exit 2) fails.
+# The merge request lists new and resolved findings in its Reports tab (Code Quality, every tier),
+# and links the HTML report. report.md compares with the target branch's snapshot.
+
+.logwarden:
+  image:
+    name: $LOGWARDEN_IMAGE
+    entrypoint: [""]
+  variables:
+    LOGWARDEN_IMAGE: ghcr.io/ingeniator/logwarden:0.8.1
+    LOGWARDEN_LOGS: logs.jsonl
+    LOGWARDEN_ARGS: ""            # extra check options, e.g. --source-root /app or --message-field log
+  script:
+    - |
+      COMPARE=""
+      TARGET="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
+      if [ "${CI_COMMIT_BRANCH:-}" != "$CI_DEFAULT_BRANCH" ] && python - "$TARGET" <<'PY'
+      # The target branch's snapshot from its latest pipeline, through the job token.
+      import os, sys, urllib.parse, urllib.request
+      e = os.environ
+      url = (f"{e['CI_API_V4_URL']}/projects/{e['CI_PROJECT_ID']}/jobs/artifacts/"
+             f"{urllib.parse.quote(sys.argv[1], safe='')}/raw/logwarden-report/snapshot.json"
+             f"?job={urllib.parse.quote(e['CI_JOB_NAME'], safe='')}")
+      req = urllib.request.Request(url, headers={"JOB-TOKEN": e["CI_JOB_TOKEN"]})
+      try:
+          with urllib.request.urlopen(req, timeout=30) as r, open("base-snapshot.json", "wb") as f:
+              f.write(r.read())
+      except OSError as err:
+          print(f"logwarden: no snapshot from {sys.argv[1]} to compare with ({err})", file=sys.stderr)
+          sys.exit(1)
+      PY
+      then
+        COMPARE="--compare base-snapshot.json"
+      fi
+      logwarden check "$LOGWARDEN_LOGS" $COMPARE $LOGWARDEN_ARGS \
+        --codequality gl-code-quality.json \
+        --snapshot logwarden-report/snapshot.json \
+        --markdown logwarden-report/report.md \
+        --html logwarden-report/report.html
+  allow_failure:
+    exit_codes: [1]
+  artifacts:
+    when: always
+    expose_as: logwarden report
+    paths: [logwarden-report/]
+    reports:
+      codequality: gl-code-quality.json

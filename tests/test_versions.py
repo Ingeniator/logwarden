@@ -15,10 +15,10 @@ def test_versions_agree():
 
 
 def test_docs_name_this_version():
-    """@vX.Y.Z (Action), ==X.Y.Z (uvx) and :X.Y.Z (Docker image) references point at this release."""
+    """@vX.Y.Z (Action), ==X.Y.Z (uvx), :X.Y.Z (Docker image) and rev: vX.Y.Z (pre-commit) point at this release."""
     import re
-    for doc in ("README.md", "docs/integration.md"):
+    for doc in ("README.md", "docs/integration.md", "ci/gitlab/logwarden.gitlab-ci.yml"):
         text = (ROOT / doc).read_text(encoding="utf-8")
-        refs = re.findall(r"logwarden@v([0-9.]+)|logwarden==([0-9.]+)|logwarden:([0-9.]+)", text)
+        refs = re.findall(r"logwarden@v([0-9.]+)|logwarden==([0-9.]+)|logwarden:([0-9.]+)|rev: v([0-9.]+)", text)
         found = {v for ref in refs for v in ref if v}
         assert found == {__version__}, (doc, found)

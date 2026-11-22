@@ -19,6 +19,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit), the self-contained HTML report, Prometheus metrics (`--metrics`) |
 | `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
 | `src/logwarden/sarif.py` | SARIF 2.1.0 for `check --sarif` (location from `code.file.path`/`code.line.number`) and `lint-code --sarif`; schema in `tests/data/` |
+| `src/logwarden/codequality.py`, `ci/gitlab/logwarden.gitlab-ci.yml` | GitLab Code Quality report (`--codequality`, same locations and fingerprints as SARIF, one fingerprint per finding) and the GitLab CI template (Docker image, offline, allowed failure on exit 1; never `-o`, whose work files hold logged values) |
 | `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |
@@ -121,8 +122,8 @@ Every version follows **notes first, verify last**:
    the release: fix it, or move the claim out of the notes.
 4. Bump the version: `src/logwarden/__init__.py`, `plugin/.claude-plugin/plugin.json`,
    `.claude-plugin/marketplace.json` and the `logwarden[mcp]==` pin in `plugin/.mcp.json`
-   (`tests/test_versions.py` checks they agree). Update the `@vX.Y.Z`, `==X.Y.Z` and image `:X.Y.Z`
-   references in `README.md` and `docs/integration.md` (`tests/test_versions.py` checks), set the notes' status to `Released <date> ·
+   (`tests/test_versions.py` checks they agree). Update the `@vX.Y.Z`, `==X.Y.Z`, image `:X.Y.Z`
+   and pre-commit `rev: vX.Y.Z` references in `README.md`, `docs/integration.md` and the GitLab template (`tests/test_versions.py` checks), set the notes' status to `Released <date> ·
    tag vX.Y.Z` (post-release checks such as installing from PyPI are added after publishing), and update `CHANGELOG.md`.
 5. Commit, wait for CI to pass, then `git tag -a vX.Y.Z -m "..."` and
    `git push origin vX.Y.Z`. The `release` workflow refuses a tag whose notes aren't

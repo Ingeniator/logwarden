@@ -155,7 +155,14 @@ def _check_text(text: str, a: argparse.Namespace) -> int:
         return json.dumps(sarif.from_check(an.violations, log_path, a.source_root), indent=2,
                           ensure_ascii=False) + "\n"
 
+    def codequality_doc() -> str:
+        from logwarden import codequality
+        log_path = getattr(a, "input", None) or getattr(a, "output", None)
+        log_path = None if log_path == "-" else log_path
+        return codequality.dumps(codequality.from_check(an.violations, log_path, a.source_root))
+
     targets = [(a.snapshot, lambda: snapshot), (a.markdown, lambda: report.markdown(result)),
+               (a.codequality, codequality_doc),
                (a.html, lambda: report.html(result, an.events)),
                (a.sarif, sarif_doc), (a.metrics, lambda: report.metrics(result))]
     if a.o:
@@ -294,6 +301,9 @@ def cmd_lint_code(a: argparse.Namespace) -> int:
     if a.sarif:
         from logwarden import sarif
         _write(Path(a.sarif), json.dumps(sarif.from_lint(result), indent=2, ensure_ascii=False) + "\n")
+    if a.codequality:
+        from logwarden import codequality
+        _write(Path(a.codequality), codequality.dumps(codequality.from_lint(result)))
     print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else lint.text(result, a.max))
     return 0 if result["ok"] else 1
 
@@ -398,8 +408,12 @@ def _report_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--sarif", metavar="FILE",
                    help="write SARIF for code scanning: findings on the source line that logged them "
                         "(needs code.file.path / code.line.number in the lines)")
+    p.add_argument("--codequality", metavar="FILE",
+                   help="write a GitLab Code Quality report (artifacts:reports:codequality): "
+                        "findings in the merge request")
     p.add_argument("--source-root", metavar="DIR",
-                   help="path prefix to remove from code.file.path in SARIF (default: the current directory)")
+                   help="path prefix to remove from code.file.path in SARIF and Code Quality "
+                        "(default: the current directory)")
     p.add_argument("--metrics", metavar="FILE",
                    help="write per-service metrics in Prometheus text format (Pushgateway, textfile collector)")
 
@@ -492,6 +506,8 @@ def parser() -> argparse.ArgumentParser:
                     help="skip a rule, e.g. logwarden-print-python (repeatable)")
     lc.add_argument("--list", action="store_true", help="list the rule ids")
     lc.add_argument("--sarif", metavar="FILE", help="also write the findings as SARIF (code scanning)")
+    lc.add_argument("--codequality", metavar="FILE",
+                    help="also write the findings as a GitLab Code Quality report")
     lc.set_defaults(fn=cmd_lint_code)
 
     r = sub.add_parser("rules", help="list rules, or explain one")
