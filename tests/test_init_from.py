@@ -138,7 +138,7 @@ def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
     out = tmp_path / "out"
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     assert up.main([]) == 0                                                 # current: nothing to do
-    assert "changed=false" in out.read_text()
+    assert "changed=false" in out.read_text(encoding="utf-8")
     up.main(["--weaver", "v0.29.0", "--semconv", "1.46.0"])
     import hashlib
     sha = hashlib.sha256(b"archive-bytes").hexdigest()
@@ -148,4 +148,4 @@ def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
     assert "schemas/1.46.0" in m and "semantic-conventions@v1.46.0[model]" in m
     g = up.GUIDE.read_text(encoding="utf-8")
     assert "Weaver binary (v0.29.0)" in g and "semantic-conventions v1.46.0" in g
-    assert "changed=true\ntitle=Pins: Weaver v0.28.0 → v0.29.0, semconv 1.45.0 → 1.46.0" in out.read_text()
+    assert "changed=true\ntitle=Pins: Weaver v0.28.0 → v0.29.0, semconv 1.45.0 → 1.46.0" in out.read_text(encoding="utf-8")

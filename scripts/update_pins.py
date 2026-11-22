@@ -40,25 +40,25 @@ def latest(repo: str) -> str:
 
 
 def current() -> tuple[str, str]:
-    w = re.search(r'WEAVER_VERSION = os\.environ\.get\("WEAVER_VERSION", "(v[^"]+)"\)', WEAVER_PY.read_text()).group(1)
-    s = re.search(r"semantic-conventions@v([0-9.]+)\[model\]", MANIFEST.read_text()).group(1)
+    w = re.search(r'WEAVER_VERSION = os\.environ\.get\("WEAVER_VERSION", "(v[^"]+)"\)', WEAVER_PY.read_text(encoding="utf-8")).group(1)
+    s = re.search(r"semantic-conventions@v([0-9.]+)\[model\]", MANIFEST.read_text(encoding="utf-8")).group(1)
     return w, s
 
 
 def set_weaver(old: str, new: str) -> None:
-    WEAVER_PY.write_text(WEAVER_PY.read_text().replace(f'"WEAVER_VERSION", "{old}"', f'"WEAVER_VERSION", "{new}"'))
-    GUIDE.write_text(GUIDE.read_text().replace(f"Weaver binary ({old})", f"Weaver binary ({new})"))
+    WEAVER_PY.write_text(WEAVER_PY.read_text(encoding="utf-8").replace(f'"WEAVER_VERSION", "{old}"', f'"WEAVER_VERSION", "{new}"'), encoding="utf-8")
+    GUIDE.write_text(GUIDE.read_text(encoding="utf-8").replace(f"Weaver binary ({old})", f"Weaver binary ({new})"), encoding="utf-8")
 
 
 def set_semconv(old: str, new: str) -> None:
     sha = hashlib.sha256(_get(ARCHIVE.format(v=new))).hexdigest()
-    text = WEAVER_PY.read_text()
+    text = WEAVER_PY.read_text(encoding="utf-8")
     if f'"{new}":' not in text:
         text = re.sub(r"(SEMCONV_SHA256 = \{\n)", rf'\1    "{new}": "{sha}",\n', text, count=1)
-    WEAVER_PY.write_text(text)
-    MANIFEST.write_text(MANIFEST.read_text().replace(f"schemas/{old}", f"schemas/{new}")
-                        .replace(f"semantic-conventions@v{old}[", f"semantic-conventions@v{new}["))
-    GUIDE.write_text(GUIDE.read_text().replace(f"semantic-conventions v{old}", f"semantic-conventions v{new}"))
+    WEAVER_PY.write_text(text, encoding="utf-8")
+    MANIFEST.write_text(MANIFEST.read_text(encoding="utf-8").replace(f"schemas/{old}", f"schemas/{new}")
+                        .replace(f"semantic-conventions@v{old}[", f"semantic-conventions@v{new}["), encoding="utf-8")
+    GUIDE.write_text(GUIDE.read_text(encoding="utf-8").replace(f"semantic-conventions v{old}", f"semantic-conventions v{new}"), encoding="utf-8")
     print(f"semconv archive v{new}: sha256 {sha}")
 
 
