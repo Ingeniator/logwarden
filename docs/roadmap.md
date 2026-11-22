@@ -99,12 +99,13 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Per-service metrics: a breakdown in every output, and `--metrics` in Prometheus text format.
 - pre-commit hook for `lint-code`.
 
-### M7 (v0.9.0): watch the live stream
-- `logwarden watch` on Kafka (its own consumer group on the topic Fluent Bit writes to), the
-  Fluent Bit http output, OTLP or stdin, checking in windows with bounded memory.
-- Prometheus `/metrics` and a Grafana dashboard; findings as JSON lines that reach Kibana
-  through Fluent Bit, with Kibana saved objects; a Kafka + Fluent Bit demo compose.
+### M7 (v0.9.0): production logs on a schedule
+- A scheduled job (GitLab template job `.logwarden-production`, or cron) exports the last hour
+  from Elasticsearch, checks it, compares with the previous run and pushes the per-service
+  metrics to a Prometheus Pushgateway; a Grafana dashboard shows the trend.
 - Weekly workflow that opens a PR for new Weaver and semconv pins.
+- Decided 2026-11-22: no long-running `watch` service. The team using logwarden runs it in CI
+  only, with no shared state, and an hourly job gives the same view with nothing to operate.
 
 ### M8 (v0.10.0): metrics
 - A [metrics standard](metrics-standard.md) on OTel metric semconv, with label rules shared
@@ -113,6 +114,7 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
   the same Weaver engine, Rego rules, baselines, reports, SARIF, Action and MCP.
 
 ### Later
-- `watch` scrapes `/metrics` endpoints and checks them continuously.
+- `logwarden watch`: a long-running check of the live stream (Kafka, Fluent Bit http,
+  OTLP), if a user needs findings within minutes rather than an hour.
 - `lint-code` rules for metric names and labels in instrument-creation calls.
 - Consistency across signals: the same attribute names in a service's logs and metrics.
