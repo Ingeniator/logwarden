@@ -1,7 +1,9 @@
 # Metrics standard
 
 **Status: draft.** logwarden doesn't check metrics yet. Rules marked **[v0.10.0]** are planned
-for [v0.10.0](releases/v0.10.0.md); the rest is for code review. Rule ids link to
+for [v0.10.0](releases/v0.10.0.md), an experiment on real services that decides whether
+metrics checks are worth building out. Rules marked **[v0.11.0]** follow in
+[v0.11.0](releases/v0.11.0.md) only if it shows they are. The rest is for code review. Rule ids link to
 [rules.md](rules.md) where the rule already exists for logs.
 
 This standard adopts existing ones rather than inventing names:
@@ -42,7 +44,7 @@ logs, cardinality budgets, sensitive data and resource identity.
   (`s`), sizes in bytes (`By`). `unit_mismatch`
 - Units are [UCUM](https://ucum.org/) codes set as the instrument's unit. Counts of things use
   an annotation in braces: `{request}`, `{order}`. Ratios use `1`.
-- **[v0.10.0]** The unit isn't part of the OTel name: no `_ms`, `_seconds`, `_bytes`, `_total`,
+- **[v0.11.0]** The unit isn't part of the OTel name: no `_ms`, `_seconds`, `_bytes`, `_total`,
   `_count` in it (the Prometheus exporter adds suffixes). `adr_metric_name`
 
 ## 4. Instrument types
@@ -89,7 +91,7 @@ is a valid semconv attribute, but not as a metric label.
 
 ## 8. Resource identity
 
-- **[v0.10.0]** Every metric carries `service.name`, `service.version` and
+- **[v0.11.0]** Every metric carries `service.name`, `service.version` and
   `deployment.environment.name` as resource attributes, as every log line does.
   [`adr_missing_required`](rules.md#adr_missing_required)
 - Instance identity (`service.instance.id`, `k8s.pod.name`) comes from the resource, not from a
@@ -97,7 +99,7 @@ is a valid semconv attribute, but not as a metric label.
 
 ## 9. Minimum coverage
 
-- **[v0.10.0]** A service can list the metrics it must emit (`[metrics] required` in the
+- **[v0.11.0]** A service can list the metrics it must emit (`[metrics] required` in the
   config); a run without them fails. `adr_metric_required`
 - HTTP and RPC servers emit request rate, errors and duration (the RED method); semconv's
   `http.server.request.duration` with `error.type` covers all three. Queue consumers emit lag

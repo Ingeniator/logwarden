@@ -107,11 +107,18 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Decided 2026-11-22: no long-running `watch` service. The team using logwarden runs it in CI
   only, with no shared state, and an hourly job gives the same view with nothing to operate.
 
-### M8 (v0.10.0): metrics
-- A [metrics standard](metrics-standard.md) on OTel metric semconv, with label rules shared
-  with logs, cardinality budgets, sensitive data and resource identity.
-- `check --signal metrics` on Prometheus text and OTLP JSON; `capture` receives `/v1/metrics`;
-  the same Weaver engine, Rego rules, baselines, reports, SARIF, Action and MCP.
+### M8 (v0.10.0): does checking metrics pay off?
+- Outcome: a go/no-go decision. An experimental `check --signal metrics` on saved Prometheus
+  text: Weaver's findings with hints, the label rules shared with logs, and cardinality
+  (unbounded labels, series budget), one finding per metric and label.
+- Trial on the `/metrics` output of five real services, compared with `promtool` and Weaver
+  alone, with a written decision rule (see the [v0.10.0 notes](releases/v0.10.0.md)).
+
+### M9 (v0.11.0, only if M8 says go): metrics in the everyday workflow
+- Outcome: metrics checked with one option in the same CI, merge request and reports as logs.
+- [Metrics standard](metrics-standard.md) rules for names, resources and required metrics;
+  OTLP input and `capture /v1/metrics`; domain metrics; baseline, compare, SARIF, Code Quality,
+  the GitLab template, the Action and MCP. Scope cut to what the trial found useful.
 
 ### Later
 - `logwarden watch`: a long-running check of the live stream (Kafka, Fluent Bit http,

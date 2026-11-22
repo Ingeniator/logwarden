@@ -4,7 +4,8 @@ Full release notes, each with a verification table, are in [docs/releases/](docs
 
 | Version | Status | Summary |
 |---|---|---|
-| [v0.10.0](docs/releases/v0.10.0.md) | Planned | Metrics: a metrics standard on OTel semconv, `check --signal metrics` on Prometheus and OTLP, cardinality and naming rules |
+| [v0.11.0](docs/releases/v0.11.0.md) | Planned, conditional | Metrics in the everyday workflow: OTLP and capture, naming, resource and required-metric rules, baseline, merge requests, Action, MCP. Only if v0.10.0 says go |
+| [v0.10.0](docs/releases/v0.10.0.md) | Planned | Experiment: `check --signal metrics` on Prometheus text with cardinality and label rules, tried on five real services for a go/no-go decision |
 | [v0.9.0](docs/releases/v0.9.0.md) | Planned | Scheduled check of production logs from Elasticsearch, Pushgateway metrics and a Grafana dashboard, pin updates |
 | [v0.8.1](docs/releases/v0.8.1.md) | Released 2026-11-22 | GitLab: Code Quality report in merge requests, CI template; offline setup docs |
 | [v0.8.0](docs/releases/v0.8.0.md) | Released 2026-11-20 | SARIF on the source line, Kibana and Elasticsearch exports as input, Fluent Bit `[source]`, metrics per service, pre-commit hook |
