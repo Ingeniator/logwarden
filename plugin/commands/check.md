@@ -12,5 +12,7 @@ Check this project's logs against the logwarden logging standard.
 2. Check with the `check_logs` MCP tool (`path`), or `uvx logwarden check <file> --json`.
 3. Report violations grouped by rule, with the fix hint for each, and say which findings
    come from code changed in this session.
+   Start with the "Fix first" places. Never quote logged values (emails, tokens, ids from
+   the log lines) in the report: name the field and the code location instead.
 4. Offer to fix the findings in code changed in this session. Don't silence findings, and
    don't add fields to `logwarden-fields.yaml` when an OTel semconv name exists.
