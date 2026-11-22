@@ -67,7 +67,13 @@ def _download(url: str) -> bytes:
 
 
 def _stderr(msg: str) -> None:
-    print(msg, file=sys.stderr)
+    from logwarden import selflog
+    selflog.emit("weaver_download_started", msg.removeprefix("logwarden: "))
+
+
+def _stderr_semconv(msg: str) -> None:
+    from logwarden import selflog
+    selflog.emit("semconv_download_started", msg.removeprefix("logwarden: "))
 
 
 def _safe_members(t: tarfile.TarFile):
@@ -121,7 +127,7 @@ def semconv_version(manifest: Path) -> str:
     return m.group(1)
 
 
-def semconv_model(version: str, log=_stderr) -> Path:
+def semconv_model(version: str, log=_stderr_semconv) -> Path:
     """Local semconv `model` directory for `version`, downloading and caching it if needed."""
     if env := os.environ.get("LOGWARDEN_SEMCONV"):
         p = Path(env)

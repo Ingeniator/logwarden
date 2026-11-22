@@ -31,3 +31,8 @@ groups:
         stability: development
         brief: Scrubbed upstream error message, at most 500 chars (standard §10).
         examples: ["rate limit exceeded"]
+      - id: logwarden_detail
+        type: string
+        stability: development
+        brief: Text of a message from logwarden itself (LOGWARDEN_LOG_FORMAT=json).
+        examples: ["fetched all 812 log lines from the last 1h of 'logs-orders'"]

@@ -115,6 +115,35 @@ sensitive_nested := `(?i)"([a-z0-9]*[._-])?(password|passwd|secret|api[_-]?key|a
 
 redacted := `(?i)^(|\*+|\[?redacted\]?|<redacted>|\[filtered\]|\[masked\]|x{3,})$`
 
+# Speed: Weaver's Rego engine runs each regular expression on every value (about 2 ms per
+# 1,000 values each). Every rule below first checks, with plain string functions, text that
+# any match must contain (lowercased, so it never rules out a case-insensitive match), and
+# runs the regular expression only then. These guards never change a finding.
+
+# Every alternative of sensitive_key contains one of these.
+sensitive_key_hints := ["passw", "secret", "key", "authorization", "cookie", "credential", "token"]
+
+sensitive_name(name) if {
+	n := lower(name)
+	some hint in sensitive_key_hints
+	contains(n, hint)
+	regex.match(sensitive_key, name)
+}
+
+# Text that a match of each secret_values pattern must contain (lowercased).
+secret_hints := {
+	"a JWT": ["eyj"],
+	"a Bearer token": ["bearer"],
+	"an API key": ["sk-", "gho_", "ghp_", "ghu_", "ghs_", "ghr_", "github_pat_", "glpat-", "akia", "xox", "aiza"],
+	"a private key": ["private key-----"],
+	"credentials in a URL": ["://"],
+	"an email address": ["@"],
+}
+
+# Digits in a string: a card number needs at least 13.
+digit_count(t) := count(t) - count(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
+	t, "0", ""), "1", ""), "2", ""), "3", ""), "4", ""), "5", ""), "6", ""), "7", ""), "8", ""), "9", ""))
+
 secret_values := {
 	"a JWT": `eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`,
 	"a Bearer token": `(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}`,
@@ -133,7 +162,7 @@ attr_text(v) := format_int(v, 10) if {
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name, "match": "key"}, msg) if {
 	name := input.sample.attribute.name
-	regex.match(sensitive_key, name)
+	sensitive_name(name)
 	v := input.sample.attribute.value
 	not is_boolean(v)
 	not regex.match(redacted, attr_text(v))
@@ -142,26 +171,43 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
 	name := input.sample.attribute.name
-	not regex.match(sensitive_key, name)
+	not sensitive_name(name)
 	v := input.sample.attribute.value
 	is_string(v)
+	contains(v, "\"")
+	contains(v, ":")
 	regex.match(sensitive_nested, v)
 	msg := sprintf("§8: '%s' contains a nested secret or credential field; don't log it", [name])
 }
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
 	name := input.sample.attribute.name
+	t := attr_text(input.sample.attribute.value)
+	low := lower(t)
 	some kind, pattern in secret_values
-	regex.match(pattern, attr_text(input.sample.attribute.value))
+	some hint in secret_hints[kind]
+	contains(low, hint)
+	regex.match(pattern, t)
 	msg := sprintf("§8: '%s' looks like it contains %s; don't log it", [name, kind])
 }
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
 	name := input.sample.attribute.name
-	some candidate in regex.find_n(`\b[2-6](?:[ -]?\d){12,18}\b`, attr_text(input.sample.attribute.value), -1)
+	t := attr_text(input.sample.attribute.value)
+	count(t) >= 13
+	digit_count(t) >= 13
+	digit_run(t)
+	some candidate in regex.find_n(`\b[2-6](?:[ -]?\d){12,18}\b`, t, -1)
 	digits := regex.replace(candidate, `[ -]`, "")
 	luhn_valid(digits)
 	msg := sprintf("§8: '%s' looks like it contains a card number; don't log it", [name])
+}
+
+# 13 digits in a row once spaces and dashes are gone: a card number has them, hex ids
+# (trace ids, UUIDs) usually don't.
+digit_run(t) if {
+	some run in regex.split(`[^0-9]+`, replace(replace(t, " ", ""), "-", ""))
+	count(run) >= 13
 }
 
 luhn_valid(s) if {

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 import tempfile
@@ -281,7 +282,7 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
         log = sample.get("log") or {}
         rec = records[i]
         logger = _str(rec.obj.get("logger"))
-        for node in _walk(log):
+        for node in (log["advice"] if "advice" in log else _walk(log)):   # live_check() gives "advice"
             if isinstance(node, dict) and "all_advice" in node:
                 for a in node["all_advice"] or []:
                     # Weaver 0.28 emits {id, level}; older builds used advice_type/advice_level.
@@ -614,34 +615,149 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
         reg = registry
         inp = read(text, policy.source if policy else None, lambda: registry_types(binary, reg))
         records, bad = inp.records, inp.bad
-        samples = work / "samples.json"
-        samples.write_text(json.dumps([to_sample(r.obj) for r in records], ensure_ascii=False),
-                           encoding="utf-8")
-        proc = subprocess.run(
-            [binary, "registry", "live-check",
-             "--registry", str(registry),
-             "--include-unreferenced",
-             "--config", str(data.path("weaver.toml")),
-             "--advice-policies", str(data.path("policies")),
-             "--input-source", str(samples),
-             "--input-format", "json",
-             "--format", "json",
-             "--output", str(work),
-             "--quiet"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        (work / "weaver.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
-        report = work / "live_check.json"
-        if not report.is_file() or report.stat().st_size == 0:
-            log = proc.stdout + proc.stderr
-            errors = [ln for ln in log.splitlines() if "×" in ln or "rror" in ln]
-            raise CheckError("weaver produced no report (registry or fields file invalid?)\n"
-                             + "\n".join(errors or log.splitlines()[-20:]))
-        found = collect(json.loads(report.read_text(encoding="utf-8")), records, bad, upstreams,
+        reports = live_check(binary, registry, [to_sample(r.obj) for r in records], work, Path(tmp),
+                             keep=out is not None)
+        found = collect({"samples": reports}, records, bad, upstreams,
                         events=policy.events if policy else None,
                         events_path=policy.events_path if policy else None,
                         missing_columns=inp.missing_columns)
     return found, inp
+
+
+CHUNK_MIN = 2000   # lines per Weaver process at least; fewer lines run in one process
+MAX_JOBS = 8
+
+
+def _jobs(n: int) -> int:
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    return max(1, min(cpus, MAX_JOBS, n // CHUNK_MIN))
+
+
+def _advice(node: Any) -> list[list]:
+    """Every all_advice list under node, in collect()'s order."""
+    return [n["all_advice"] for n in _walk(node) if isinstance(n, dict) and "all_advice" in n]
+
+
+def _plain(v: Any) -> bool:
+    return not isinstance(v, (dict, list))
+
+
+def _attribute_advice(x: dict) -> list[list]:
+    """_advice of an attribute sample, read from where Weaver puts it (fast path)."""
+    a = x.get("attribute")
+    if isinstance(a, dict) and len(x) == 1 and all(_plain(v) for k, v in a.items() if k != "live_check_result"):
+        r = a.get("live_check_result")
+        if r is None:
+            return []
+        if isinstance(r, dict) and all(_plain(v) for k, v in r.items() if k != "all_advice"):
+            return [r["all_advice"]] if "all_advice" in r else []
+    return _advice(x)
+
+
+_W3C = {32: re.compile(r"[0-9a-f]{32}"), 16: re.compile(r"[0-9a-f]{16}")}
+
+
+def _trace_key(t: Any, n: int) -> Any:
+    """What the trace-context rule sees of an id: a valid one is like any other valid one."""
+    if isinstance(t, str) and _W3C[n].fullmatch(t) and t.strip("0"):
+        return "valid"
+    return t
+
+
+def _shape(log: dict) -> str:
+    """Everything the per-line (not per-field) rules read: same shape, same line advice."""
+    return json.dumps([log["body"], log["severity_number"], log["severity_text"],
+                       _trace_key(log["trace_id"], 32), _trace_key(log["span_id"], 16),
+                       [a["name"] for a in log["attributes"]]], ensure_ascii=False, default=str)
+
+
+def _weaver_run(binary: str, registry: Path, samples: Path, out: Path) -> tuple[Path, str]:
+    proc = subprocess.run(
+        [binary, "registry", "live-check",
+         "--registry", str(registry),
+         "--include-unreferenced",
+         "--config", str(data.path("weaver.toml")),
+         "--advice-policies", str(data.path("policies")),
+         "--input-source", str(samples),
+         "--input-format", "json",
+         "--format", "json",
+         "--output", str(out),
+         "--quiet"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    log = proc.stdout + proc.stderr
+    report = out / "live_check.json"
+    if not report.is_file() or report.stat().st_size == 0:
+        errors = [ln for ln in log.splitlines() if "×" in ln or "rror" in ln]
+        raise CheckError("weaver produced no report (registry or fields file invalid?)\n"
+                         + "\n".join(errors or log.splitlines()[-20:]))
+    return report, log
+
+
+def live_check(binary: str, registry: Path, samples: list[dict], work: Path, tmp: Path,
+               keep: bool = False) -> list[dict]:
+    """Weaver's advice for each log sample, in order: {"log": {"body", "advice": [all_advice, ...]}}.
+
+    Weaver judges every field on its own, and the per-line rules read only the event, level,
+    trace context and field names. So each distinct field (name, type, value) is sent once as an
+    attribute sample, and each distinct line shape once as a log sample; each line's advice is
+    put back together from them. Large inputs run in chunks, in parallel.
+    work gets weaver.log, and with keep (-o) the samples.json and live_check.json Weaver saw."""
+    from concurrent.futures import ThreadPoolExecutor
+    unique: list[dict] = []
+    index: dict[str, int] = {}
+    plan = []   # per line: (shape sample index, [attribute sample index, ...])
+
+    def add(key: str, sample: dict) -> int:
+        if key not in index:
+            index[key] = len(unique)
+            unique.append(sample)
+        return index[key]
+
+    for sample in samples:
+        log = sample["log"]
+        attrs = [add(json.dumps(["a", a["name"], a["type"], a["value"]], ensure_ascii=False, default=str),
+                     {"attribute": a}) for a in log["attributes"]]
+        plan.append((add("l" + _shape(log), sample), attrs))
+
+    jobs = _jobs(len(unique))
+    size = -(-len(unique) // jobs)
+    chunks = [unique[i:i + size] for i in range(0, len(unique), size)] or [[]]
+    dirs = [work] if len(chunks) == 1 else [tmp / f"chunk-{i}" for i in range(len(chunks))]
+    for d, chunk in zip(dirs, chunks):
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "samples.json").write_text(json.dumps(chunk, ensure_ascii=False), encoding="utf-8")
+    with ThreadPoolExecutor(len(chunks)) as pool:
+        runs = list(pool.map(lambda d: _weaver_run(binary, registry, d / "samples.json", d), dirs))
+    (work / "weaver.log").write_text("".join(log for _, log in runs), encoding="utf-8")
+    merged = None
+    if len(chunks) > 1 and keep:   # one samples.json and live_check.json in work, as with one process
+        (work / "samples.json").write_text(json.dumps(unique, ensure_ascii=False), encoding="utf-8")
+        merged = (work / "live_check.json").open("w", encoding="utf-8")
+        merged.write('{"samples": [')
+    advice: list[list[list]] = []   # per unique sample
+    try:
+        for i, (report, _) in enumerate(runs):
+            got = json.loads(report.read_text(encoding="utf-8")).get("samples") or []
+            if merged:
+                merged.write(("," if i else "") + ",".join(json.dumps(x, ensure_ascii=False) for x in got))
+            for x in got:
+                if "log" in x:   # only the line's own advice: its fields come from attribute samples
+                    log = x["log"] or {}
+                    advice.append(_advice({k: v for k, v in log.items() if k != "attributes"}))
+                else:
+                    advice.append(_attribute_advice(x))
+    finally:
+        if merged:
+            merged.write("]}")
+            merged.close()
+    if len(advice) != len(unique):
+        raise CheckError(f"weaver reported {len(advice)} of {len(unique)} samples")
+    # Fields first, then the line's own advice: the order of a report of the whole line.
+    return [{"log": {"body": sample["log"]["body"],
+                     "advice": [{"all_advice": a} for i in attrs for a in advice[i]]
+                               + [{"all_advice": a} for a in advice[shape]]}}
+            for sample, (shape, attrs) in zip(samples, plan)]
 
 
 @dataclass

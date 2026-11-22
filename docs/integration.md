@@ -24,8 +24,16 @@ access in CI? See [Without internet access](#without-internet-access).
 conventions inside:
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 check logs.jsonl
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.1 check logs.jsonl
 ```
+
+**logwarden's own messages.** Progress, warnings and errors go to stderr; the result goes to
+stdout. Set `LOGWARDEN_LOG_FORMAT=json` (or `--log-format json`) when logwarden runs where its
+output is collected, such as a scheduled container: each message is then one JSON record that
+passes this standard (`event` such as `logs_fetched` or `command_failed`, the required resource
+fields, `error.type` on warnings and errors, the text in `logwarden_detail`). The Docker image
+does this by default; set `LOGWARDEN_LOG_FORMAT=text` for plain text. The environment comes
+from `DEPLOYMENT_ENVIRONMENT` or `OTEL_RESOURCE_ATTRIBUTES`, and is `production` without either.
 
 ### Without internet access
 
@@ -128,7 +136,7 @@ instrumentation scope) and then runs the same check:
 ```bash
 logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
 logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
-docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 capture --host 0.0.0.0
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.1 capture --host 0.0.0.0
 ```
 
 With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
@@ -143,13 +151,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.10.0
+- uses: Ingeniator/logwarden@v0.10.1
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.10.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.10.1 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -195,7 +203,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.10.0
+  - uses: Ingeniator/logwarden@v0.10.1
     with:
       logs: logs.jsonl
       comment: "true"
@@ -227,7 +235,7 @@ logwarden:
   extends: .logwarden
   needs: [{job: test, artifacts: true}]     # the job that writes logs.jsonl
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.0   # your copy of ghcr.io/ingeniator/logwarden
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.1   # your copy of ghcr.io/ingeniator/logwarden
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
@@ -272,7 +280,7 @@ permissions:
   security-events: write        # for sarif: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.10.0
+  - uses: Ingeniator/logwarden@v0.10.1
     with:
       logs: logs.jsonl
       sarif: "true"
@@ -281,7 +289,7 @@ steps:
 `lint-code --sarif FILE` does the same for the source rules. Upload it in its own step:
 
 ```yaml
-  - run: uvx logwarden==0.10.0 lint-code --sarif lint.sarif src/ || true
+  - run: uvx logwarden==0.10.1 lint-code --sarif lint.sarif src/ || true
   - uses: github/codeql-action/upload-sarif@v3
     with: {sarif_file: lint.sarif, category: logwarden-lint-code}
 ```
@@ -448,7 +456,7 @@ fields and failure context are actually present, so it doesn't replace logwarden
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Ingeniator/logwarden
-    rev: v0.10.0
+    rev: v0.10.1
     hooks:
       - id: logwarden-lint-code
 ```

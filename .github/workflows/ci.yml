@@ -41,6 +41,16 @@ jobs:
           uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
           uv run coverage report
 
+  speed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: 100,000 lines (v0.10.1 target 60 s; fails over 120 s to allow for runner noise)
+        run: |
+          uv run --python 3.13 logwarden setup > /dev/null
+          uv run --python 3.13 python scripts/speed.py 100000 120 | tee -a "$GITHUB_STEP_SUMMARY"
+
   action:
     runs-on: ubuntu-latest
     steps:

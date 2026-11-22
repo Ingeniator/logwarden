@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from logwarden import __version__, check, config, data, output, weaver
+from logwarden import __version__, check, config, data, output, selflog, weaver
 
 FIELDS_DEFAULT = config.DEFAULT_FIELDS
 _BEGIN, _END = "<!-- logwarden:begin -->", "<!-- logwarden:end -->"
@@ -17,8 +17,14 @@ class UsageError(Exception):
     pass
 
 
-def _err(msg: str) -> None:
-    print(f"logwarden: {msg}", file=sys.stderr)
+def _err(msg: str, event: str = "command_failed", level: str = "error",
+         error_type: str | None = "usage_error") -> None:
+    """A message on stderr (plain text, or a JSON record with LOGWARDEN_LOG_FORMAT=json)."""
+    selflog.emit(event, msg, level, error_type=error_type if level in ("warning", "error") else None)
+
+
+def _info(msg: str, event: str) -> None:
+    selflog.emit(event, msg)
 
 
 def _read_input(src: str) -> str:
@@ -33,7 +39,7 @@ def _read_input(src: str) -> str:
 def _load_config(cwd: Path) -> config.Config:
     cfg = config.load(cwd)
     for w in cfg.warnings:
-        _err(f"warning: {w}")
+        _err(f"warning: {w}", "config_warning", "warning", "invalid_config")
     if cfg.errors:
         raise UsageError("\n".join(cfg.errors))
     return cfg
@@ -176,11 +182,11 @@ def _check_text(text: str, a: argparse.Namespace) -> int:
     if getattr(a, "pushgateway", None):
         from logwarden import fetch
         try:
-            _err(f"pushed metrics to {fetch.push(a.pushgateway, report.metrics(result))}")
+            _info(f"pushed metrics to {fetch.push(a.pushgateway, report.metrics(result))}", "metrics_pushed")
         except fetch.FetchError as e:
             raise UsageError(str(e)) from e
     if a.o:
-        _err(f"full output in {a.o}")
+        _info(f"full output in {a.o}", "output_written")
     return 0 if result["ok"] else 1
 
 
@@ -261,7 +267,8 @@ def cmd_capture(a: argparse.Namespace) -> int:
     port = a.port if a.port is not None else (0 if command else 4318)
     out = Path(a.output)
     try:
-        rx = capture.Receiver(out, host=a.host, port=port, log=_err).start()
+        rx = capture.Receiver(out, host=a.host, port=port, log=lambda m: _err(
+            m, "capture_request_rejected", "warning", "invalid_otlp_request")).start()
     except OSError as e:
         raise UsageError(f"capture: can't listen on {a.host}:{port}: {e}") from e
     rc = 0
@@ -270,20 +277,21 @@ def cmd_capture(a: argparse.Namespace) -> int:
             exe = shutil.which(command[0])
             if not exe:
                 raise UsageError(f"capture: command not found: {command[0]}")
-            _err(f"receiving OTLP on {rx.endpoint}; running: {' '.join(command)}")
+            _info(f"receiving OTLP on {rx.endpoint}; running: {' '.join(command)}", "capture_started")
             # The command's stdout goes to stderr: our stdout is only the result (--json stays parseable).
             sys.stdout.flush()
             rc = subprocess.run([exe, *command[1:]], env=_otel_env(rx.endpoint),
                                 stdout=sys.stderr.fileno()).returncode
             time.sleep(0.3)  # let in-flight exports land
         else:
-            _err(f"receiving OTLP/HTTP logs on {rx.endpoint}/v1/logs into {out} (Ctrl-C to stop)")
+            _info(f"receiving OTLP/HTTP logs on {rx.endpoint}/v1/logs into {out} (Ctrl-C to stop)",
+                  "capture_started")
             _wait_for_signal()
     finally:
         rx.stop()
-    _err(f"captured {rx.count} log records into {out}")
+    _info(f"captured {rx.count} log records into {out}", "capture_finished")
     if rc:
-        _err(f"capture: command exited with {rc}")
+        _err(f"capture: command exited with {rc}", "capture_command_failed", "error", "nonzero_exit")
         return rc
     if a.no_check:
         return 0
@@ -310,8 +318,9 @@ def cmd_fetch(a: argparse.Namespace) -> int:
         except OSError as e:
             raise UsageError(f"can't write {a.output}: {e}") from e
     sample = f"the newest {got:,} of {matched:,}" if matched > got else f"all {got:,}"
-    _err(f"fetched {sample} log lines from the last {a.since} of '{a.index}'"
-         + ("" if a.output == "-" else f" into {a.output} (it holds logged values: delete it after the check)"))
+    _info(f"fetched {sample} log lines from the last {a.since} of '{a.index}'"
+          + ("" if a.output == "-" else f" into {a.output} (it holds logged values: delete it after the check)"),
+          "logs_fetched")
     return 0
 
 
@@ -442,7 +451,7 @@ def cmd_setup(_: argparse.Namespace) -> int:
     try:
         print(weaver.find())
         model = weaver.semconv_model(weaver.semconv_version(data.path("registry") / "manifest.yaml"))
-        _err(f"semantic conventions: {model}")
+        _info(f"semantic conventions: {model}", "semconv_ready")
     except weaver.WeaverError as e:
         raise UsageError(str(e)) from e
     return 0
@@ -454,6 +463,7 @@ def cmd_mcp(_: argparse.Namespace) -> int:
     except ImportError as e:
         raise UsageError("the MCP server needs the 'mcp' extra: "
                          "pip install 'logwarden[mcp]' (or uvx --from 'logwarden[mcp]' logwarden mcp)") from e
+    selflog.route_library_logs()   # JSON mode: the MCP SDK's own log lines as JSON records
     mcp_server.main()
     return 0
 
@@ -502,13 +512,44 @@ def _input_args(p: argparse.ArgumentParser) -> None:
                    help="check only this service (repeatable; '(none)' for lines without one)")
 
 
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str):  # invalid arguments: exit 2, as a JSON record in JSON mode
+        if selflog.fmt() == "json":
+            _err(f"{self.prog}: {message}", "command_failed", "error", "invalid_arguments")
+            sys.exit(2)
+        super().error(message)
+
+
+def _log_format(argv: list[str]) -> list[str]:
+    """Take --log-format out of argv (any position before `--`) and apply it."""
+    rest, i = [], 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            rest += argv[i:]
+            break
+        if arg == "--log-format" or arg.startswith("--log-format="):
+            value = arg.partition("=")[2] if "=" in arg else (argv[i + 1] if i + 1 < len(argv) else "")
+            i += 1 if "=" in arg else 2
+            if value not in selflog.FORMATS:
+                raise UsageError(f"--log-format must be text or json, not {value!r}")
+            selflog.set_format(value)
+            continue
+        rest.append(arg)
+        i += 1
+    return rest
+
+
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    p = _Parser(
         prog="logwarden",
         description="Guardrail for structured logs. Exit codes: 0 no violations, "
                     "1 violations found, 2 usage or setup error.",
         epilog="Docs: https://github.com/Ingeniator/logwarden (docs/standard.md, docs/rules.md)")
     p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("--log-format", choices=selflog.FORMATS,
+                   help=f"logwarden's own messages on stderr: text (default) or json, records that pass "
+                        f"the standard (also {selflog.ENV}=json). Allowed before or after the command")
     sub = p.add_subparsers(dest="cmd", metavar="command")
 
     c = sub.add_parser("check", help="check logs: JSON lines, Kibana CSV or Elasticsearch exports (- reads stdin)")
@@ -625,6 +666,12 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252; messages use §, ü, ...
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    selflog.set_format(None)
+    try:
+        argv = _log_format(list(sys.argv[1:] if argv is None else argv))
+    except UsageError as e:
+        _err(str(e), error_type="invalid_arguments")
+        return 2
     p = parser()
     a = p.parse_args(argv)
     if not a.cmd:
@@ -637,3 +684,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except KeyboardInterrupt:
         return 130
+    except Exception as e:
+        if selflog.fmt() != "json":
+            raise
+        selflog.emit("command_crashed", f"unexpected error in '{a.cmd}': {type(e).__name__}", "error", exc=e)
+        return 1   # what Python returns for an uncaught exception, as in text mode
