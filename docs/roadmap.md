@@ -99,26 +99,38 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Per-service metrics: a breakdown in every output, and `--metrics` in Prometheus text format.
 - pre-commit hook for `lint-code`.
 
-### M7 (v0.9.0): production logs on a schedule
-- A scheduled job (GitLab template job `.logwarden-production`, or cron) exports the last hour
-  from Elasticsearch, checks it, compares with the previous run and pushes the per-service
-  metrics to a Prometheus Pushgateway; a Grafana dashboard shows the trend.
-- Weekly workflow that opens a PR for new Weaver and semconv pins.
+### M7 (v0.9.0): a first useful result in 10 minutes, without code changes
+- Rule profiles: `essential` (sensitive data, non-JSON lines, required fields) to start with,
+  `standard` (every rule) as the default.
+- Ranked fixes: findings grouped by source line or logger and event, "Fix first" in every report.
+- Scheduled check of the logs already in Elasticsearch (GitLab template job or cron), compared
+  with the previous run, metrics to a Pushgateway, a Grafana dashboard.
+- Four "Start here" pages (Elasticsearch, GitLab, GitHub, AI agents); everything else under
+  "Advanced". `STABILITY.md`: the public interface, how it changes, the conditions for 1.0.
 - Decided 2026-11-22: no long-running `watch` service. The team using logwarden runs it in CI
   only, with no shared state, and an hourly job gives the same view with nothing to operate.
 
-### M8 (v0.10.0): does checking metrics pay off?
+### M8 (v0.10.0): from `essential` to the full standard in one reviewed change
+- `init --from LOGS` writes the fields file from real logs, declaring custom fields but not
+  synonyms or sensitive-looking fields; the summary shows how big the move to `standard` is.
+- Weekly workflow that opens a PR for new Weaver and semconv pins.
+
+### M9 (v0.11.0): does checking metrics pay off?
 - Outcome: a go/no-go decision. An experimental `check --signal metrics` on saved Prometheus
   text: Weaver's findings with hints, the label rules shared with logs, and cardinality
   (unbounded labels, series budget), one finding per metric and label.
 - Trial on the `/metrics` output of five real services, compared with `promtool` and Weaver
-  alone, with a written decision rule (see the [v0.10.0 notes](releases/v0.10.0.md)).
+  alone, with a written decision rule (see the [v0.11.0 notes](releases/v0.11.0.md)).
 
-### M9 (v0.11.0, only if M8 says go): metrics in the everyday workflow
+### M10 (v0.12.0, only if M9 says go): metrics in the everyday workflow
 - Outcome: metrics checked with one option in the same CI, merge request and reports as logs.
 - [Metrics standard](metrics-standard.md) rules for names, resources and required metrics;
   OTLP input and `capture /v1/metrics`; domain metrics; baseline, compare, SARIF, Code Quality,
   the GitLab template, the Action and MCP. Scope cut to what the trial found useful.
+
+### 1.0
+- When at least two teams have used logwarden for a month with no change to the public
+  interface needed (see `STABILITY.md` from v0.9.0).
 
 ### Later
 - `logwarden watch`: a long-running check of the live stream (Kafka, Fluent Bit http,
