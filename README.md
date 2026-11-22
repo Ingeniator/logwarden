@@ -231,6 +231,7 @@ records that Fluent Bit wrapped. See
 ```bash
 uv add --dev logwarden                      # or: pipx install logwarden / uvx logwarden
 logwarden init --agent                      # fields file + AGENTS.md section
+logwarden init --from logs.jsonl            # later: declare the service's own fields, move to the full standard
 LOGWARDEN_CAPTURE=logs.jsonl pytest         # capture logs (pytest plugin, auto-registered)
 logwarden check logs.jsonl                  # check them
 ```

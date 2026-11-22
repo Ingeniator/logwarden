@@ -1,0 +1,74 @@
+name: update-pins
+
+# Weekly: look for new Weaver and semantic-conventions releases. When there is one, update the
+# pins (with the semconv archive's SHA-256), run the tests, and open a PR saying how they went.
+# A PR opened with GITHUB_TOKEN doesn't start other workflows, so the tests run here.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      weaver:
+        description: Weaver version to pin (e.g. v0.27.0); empty for the latest release
+        required: false
+      semconv:
+        description: semconv version to pin (e.g. 1.44.0); empty for the latest release
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-pins
+  cancel-in-progress: false
+
+jobs:
+  pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Update the pins
+        id: pins
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WEAVER_IN: ${{ inputs.weaver }}
+          SEMCONV_IN: ${{ inputs.semconv }}
+        run: |
+          set -- 
+          [ -n "$WEAVER_IN" ] && set -- "$@" --weaver "$WEAVER_IN"
+          [ -n "$SEMCONV_IN" ] && set -- "$@" --semconv "$SEMCONV_IN"
+          python scripts/update_pins.py "$@"
+      - name: Run the tests with the new pins
+        id: tests
+        if: steps.pins.outputs.changed == 'true'
+        continue-on-error: true
+        run: uv run pytest -q 2>&1 | tee pytest.log | tail -40
+      - name: Open a PR
+        if: steps.pins.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.pins.outputs.title }}
+          OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          branch="pins/$(echo "$TITLE" | tr -cs 'A-Za-z0-9.' '-' | sed 's/-$//')"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "a PR branch for these pins exists already: $branch"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -qam "$TITLE"
+          git push -q origin "$branch"
+          {
+            echo "Automatic pin update from \`update-pins.yml\`."
+            echo
+            if [ "$OUTCOME" = success ]; then echo "Tests: **passed** with the new pins."
+            else echo "Tests: **failed** with the new pins. A newer semconv can change findings (goldens, deprecated fields); see the log below and the run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; fi
+            echo
+            echo '<details><summary>pytest</summary>'; echo; echo '```'; tail -60 pytest.log; echo '```'; echo '</details>'
+            echo
+            echo "Before merging: note the change in the next release notes (findings can change with semconv)."
+          } > body.md
+          gh pr create --base main --head "$branch" --title "$TITLE" --body-file body.md

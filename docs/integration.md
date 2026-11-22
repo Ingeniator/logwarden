@@ -12,6 +12,7 @@ pipx install logwarden          # or a global CLI
 uvx logwarden check logs.jsonl  # or no install at all (needs uv)
 
 logwarden init --agent          # logwarden-fields.yaml + a logwarden section in AGENTS.md
+logwarden init --from logs.jsonl   # declare the fields these logs use, set profile = "standard"
 ```
 
 Weaver, which does the actual checking, and the OpenTelemetry semantic conventions are
@@ -341,7 +342,14 @@ rules are listed with their reasons in every result.
 
 `fields` lists fields only this service logs. When there's no config, `./logwarden-fields.yaml`
 is used if it exists. The template that `logwarden init` creates explains the format and
-when a field belongs there. Fields that several services share go into logwarden's
+when a field belongs there. `logwarden init --from LOGS` fills it from real logs (any input
+`check` reads, with the same `--format` and `[source]` options): it declares every field the
+registry doesn't know, with its type and how many lines had it, and never a logged value.
+Fields that a rule wants renamed or dropped (synonyms, underscore semconv names, sensitive
+data) are listed in a comment instead. Rerunning it adds new fields and keeps your edits. It
+also sets `profile = "standard"`. Under `essential`, the summary says how many of the
+findings `standard` would add are such unknown fields
+(`outside_profile_unknown_fields` in `--json`). Fields that several services share go into logwarden's
 shared registry instead, through a PR to this repo.
 
 The order of precedence is `--fields`, then `$LOGWARDEN_FIELDS`, then the config, then

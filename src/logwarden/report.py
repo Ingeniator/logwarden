@@ -75,8 +75,13 @@ def profile_note(result: dict) -> str | None:
     if result.get("profile", "standard") == "standard":
         return None
     n = result.get("outside_profile", 0)
-    return (f"Profile {result['profile']}: {n} more violation{'' if n == 1 else 's'} under the "
+    note = (f"Profile {result['profile']}: {n} more violation{'' if n == 1 else 's'} under the "
             "standard profile (--profile standard).")
+    u = result.get("outside_profile_unknown_fields", 0)
+    if u:
+        note += (f" {u} of them are unknown fields, which `logwarden init --from LOGS` declares; "
+                 f"{n - u} come from other rules.")
+    return note
 
 
 def _where(line) -> str:

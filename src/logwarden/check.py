@@ -320,6 +320,18 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
     return found + upstream_findings(records, upstreams or [])
 
 
+# Rules that mean "rename this field or stop logging it", so init --from doesn't declare it.
+NOT_DECLARED = {"adr_banned_synonym": "rename it to the semconv name",
+                "adr_semconv_prefix": "use the dotted semconv name",
+                "adr_sensitive_data": "don't log it"}
+
+
+def declarable(violations: list[dict]) -> set[str]:
+    """Unknown fields that no rule asks to rename or drop: what init --from declares."""
+    flagged = {v["field"] for v in violations if v["rule"] in NOT_DECLARED and v.get("field")}
+    return {v["field"] for v in violations if v["rule"] == "missing_attribute" and v.get("field")} - flagged
+
+
 def violations_of(found: list[dict]) -> list[dict]:
     # A field already flagged by a naming rule (or as a secret key) is not also reported as unknown.
     named = {(f["line"], f["field"]) for f in found if f.get("renames")}
@@ -336,6 +348,7 @@ class Outcome:
     baselined: int = 0
     fixed: int = 0
     outside: int = 0            # violations of rules outside the profile, not counted
+    outside_unknown: int = 0    # of those: unknown fields (missing_attribute), which init --from declares
 
 
 def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
@@ -349,7 +362,11 @@ def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
             enabled.append(f)
     kept = [f for f in enabled if not policy.outside(f["rule"])]
     violations = violations_of(kept)
-    outside = len(violations_of(enabled)) - len(violations)
+    all_enabled = violations_of(enabled)
+    outside = len(all_enabled) - len(violations)
+    names = declarable(all_enabled)
+    outside_unknown = sum(1 for v in all_enabled if v["rule"] == "missing_attribute"
+                          and policy.outside(v["rule"]) and v["field"] in names)
 
     baselined = fixed = 0
     if policy.baseline is not None:
@@ -360,7 +377,7 @@ def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
         baselined = len(violations) - len(new)
         fixed = len(known - seen)
         violations = new
-    return Outcome(kept, violations, off, baselined, fixed, outside)
+    return Outcome(kept, violations, off, baselined, fixed, outside, outside_unknown)
 
 
 def fix_first(violations: list[dict], limit: int = FIX_FIRST) -> list[dict]:
@@ -473,6 +490,7 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         "services": by_service(violations, lines or {}),
         "profile": policy.profile,
         "outside_profile": o.outside,
+        "outside_profile_unknown_fields": o.outside_unknown,
         "lines_with_violations": len({v["line"] for v in violations if v["line"] is not None}),
         "fix_first": fix_first(violations),
         "input": {"format": inp.format if inp else "jsonl",
