@@ -134,7 +134,8 @@ def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         monkeypatch.setattr(up, name, dst)
     monkeypatch.setattr(up, "_get", lambda url: b"archive-bytes")
-    monkeypatch.setattr(up, "latest", lambda repo: {"weaver": "v0.28.0", "semantic-conventions": "v1.45.0"}[repo])
+    w_now, s_now = up.current()                                             # whatever is pinned
+    monkeypatch.setattr(up, "latest", lambda repo: {"weaver": w_now, "semantic-conventions": "v" + s_now}[repo])
     out = tmp_path / "out"
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     assert up.main([]) == 0                                                 # current: nothing to do
@@ -143,9 +144,9 @@ def test_claim4_update_pins_rewrites(tmp_path, monkeypatch):
     import hashlib
     sha = hashlib.sha256(b"archive-bytes").hexdigest()
     w = up.WEAVER_PY.read_text(encoding="utf-8")
-    assert '"WEAVER_VERSION", "v0.29.0"' in w and f'"1.46.0": "{sha}"' in w and '"1.45.0":' in w
+    assert '"WEAVER_VERSION", "v0.29.0"' in w and f'"1.46.0": "{sha}"' in w and f'"{s_now}":' in w
     m = up.MANIFEST.read_text(encoding="utf-8")
     assert "schemas/1.46.0" in m and "semantic-conventions@v1.46.0[model]" in m
     g = up.GUIDE.read_text(encoding="utf-8")
     assert "Weaver binary (v0.29.0)" in g and "semantic-conventions v1.46.0" in g
-    assert "changed=true\ntitle=Pins: Weaver v0.28.0 → v0.29.0, semconv 1.45.0 → 1.46.0" in out.read_text(encoding="utf-8")
+    assert f"changed=true\ntitle=Pins: Weaver {w_now} → v0.29.0, semconv {s_now} → 1.46.0" in out.read_text(encoding="utf-8")
