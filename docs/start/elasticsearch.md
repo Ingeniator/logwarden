@@ -8,7 +8,7 @@ About 10 minutes.
 
 ```bash
 export LOGWARDEN_ES_AUTH='user:password'      # or 'ApiKey <base64 of id:api_key>'
-docker run --rm -e LOGWARDEN_ES_AUTH -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
+docker run --rm -e LOGWARDEN_ES_AUTH -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 \
   fetch --es https://elasticsearch.example.com:9200 --index 'logs-*' --since 1h
 ```
 
@@ -30,7 +30,7 @@ Open one log document in Kibana's Discover and look at how the service's JSON li
 - **As fields of the document** (Fluent Bit `Merge_Log`, Filebeat, Elastic agents): nothing to add.
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 \
   check logwarden-es.json --profile essential --message-field log --html report.html
 #                         leave out --message-field log if the fields are in the document ^
 ```
@@ -75,9 +75,9 @@ index and Pushgateway, set `LOGWARDEN_ES_AUTH` in the job's environment, and add
 set -e
 mkdir -p /var/lib/logwarden && cd /var/lib/logwarden   # keeps last.json between runs
 COMPARE=""; [ -f last.json ] && COMPARE="--compare last.json"
-docker run --rm -e LOGWARDEN_ES_AUTH -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
+docker run --rm -e LOGWARDEN_ES_AUTH -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 \
   fetch --es https://elasticsearch.example.com:9200 --index 'logs-*' --since 1h -o es.json
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 \
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 \
   check es.json --profile essential --message-field log $COMPARE \
   --snapshot last.json --markdown report.md --html report.html \
   --pushgateway http://pushgateway.example.com:9091 || [ $? -eq 1 ]
@@ -93,6 +93,16 @@ violations by rule, and the time of the last check, which shows when the schedul
 ## Next
 
 - Fix the top places, and watch the share go down.
-- When `essential` is clean, move to the full standard: `--profile standard`.
+- When `essential` is clean, move to the full standard in one reviewed change. The summary
+  already says how many of the extra findings are fields only your service uses; declare them
+  from the same export, in the service's repository:
+
+    ```bash
+    docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 \
+      init --from logwarden-es.json --message-field log
+    ```
+
+    It writes `logwarden-fields.yaml` (names and types, no values), lists the fields to rename
+    instead, and sets `profile = "standard"` in `logwarden.toml`. Review both and commit them.
 - Run the check on your tests too, so new problems don't reach production:
   [GitLab](gitlab.md) or [GitHub](github.md).

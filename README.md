@@ -121,7 +121,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
-  - uses: Ingeniator/logwarden@v0.9.0
+  - uses: Ingeniator/logwarden@v0.10.0
     with:
       logs: logs.jsonl
       comment: "true"
@@ -153,7 +153,7 @@ logwarden checks output, so the language doesn't matter.
 
 ```bash
 logwarden capture -o logs.jsonl -- npm test    # receive OTLP logs from any OTel SDK while the command runs
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 check logs.jsonl   # no Python needed
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 check logs.jsonl   # no Python needed
 ```
 
 There are setup recipes, with example output that passes, for

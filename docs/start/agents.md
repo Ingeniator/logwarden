@@ -38,10 +38,13 @@ This adds a logwarden section to `AGENTS.md` with the rules and the commands to 
 agents that support MCP, add the server:
 
 ```json
-{"mcpServers": {"logwarden": {"command": "uvx", "args": ["--from", "logwarden[mcp]==0.9.0", "logwarden", "mcp"]}}}
+{"mcpServers": {"logwarden": {"command": "uvx", "args": ["--from", "logwarden[mcp]==0.10.0", "logwarden", "mcp"]}}}
 ```
 
 ## Next
+
+- When `essential` is clean, ask the agent to move the project to the full standard: it runs
+  `logwarden init --from` on the captured logs and fixes the fields it lists.
 
 - Run the check in CI too, so the agent's work is checked like everyone else's:
   [GitLab](gitlab.md) or [GitHub](github.md).
