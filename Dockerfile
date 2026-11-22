@@ -2,7 +2,7 @@
 # conventions are downloaded at build time (SHA-256 checked), so checks run offline.
 #   docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden check logs.jsonl
 #   docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden capture --host 0.0.0.0
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 LABEL org.opencontainers.image.source="https://github.com/Ingeniator/logwarden" \
       org.opencontainers.image.description="Guardrail for structured logs: checks JSON-lines and OTLP logs against the logwarden logging standard" \
