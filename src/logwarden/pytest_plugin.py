@@ -18,10 +18,11 @@ import pytest
 
 _handler = None
 
-
-def pytest_configure(config):
-    if os.getenv("LOGWARDEN_CAPTURE"):
-        os.environ.setdefault("LOGWARDEN_CALLSITE", "1")
+# Set at import, not in pytest_configure: pytest imports conftest.py files before it calls
+# pytest_configure, and a conftest.py that sets up logging at the top would call configure()
+# before the variable exists. Entry-point plugins are imported before any conftest.py.
+if os.getenv("LOGWARDEN_CAPTURE"):
+    os.environ.setdefault("LOGWARDEN_CALLSITE", "1")
 
 
 def _service_formatter():

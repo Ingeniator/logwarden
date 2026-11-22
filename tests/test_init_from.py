@@ -45,8 +45,10 @@ def test_claim1_declares_custom_fields_only(tmp_path):
     assert "type: int" in text.split("id: cart_size")[1].split("- id:")[0]
     assert "type: boolean" in text.split("id: feature.enabled")[1].split("- id:")[0]
     assert "Seen on 4 of 7 lines" in text.split("id: order.id")[1].split("- id:")[0]
-    assert "A bare name" in text.split("id: cart_size")[1].split("- id:")[0]
-    assert "A bare name" not in text.split("id: order.id")[1].split("- id:")[0]
+    # The hint follows the standard (§2): a service's own fields are snake_case without dots.
+    assert "Dotted: the standard (§2)" in text.split("id: order.id")[1].split("- id:")[0]
+    assert "Dotted" not in text.split("id: cart_size")[1].split("- id:")[0]
+    assert "namespaced" not in text
     for value in ("o-1", "o-2", "14.5", "anna@example.com", "hunter2", "/checkout/v7"):
         assert value not in text                                            # no logged values
     assert (tmp_path / "logwarden.toml").read_text(encoding="utf-8") == 'profile = "standard"\n'
@@ -63,8 +65,10 @@ def test_claim1_rerun_adds_and_keeps_edits(tmp_path):
     (tmp_path / "logs.jsonl").write_text(LOGS, encoding="utf-8")
     run_cli("init", "--from", "logs.jsonl", cwd=tmp_path)
     f = tmp_path / "logwarden-fields.yaml"
-    edited = f.read_text(encoding="utf-8").replace(
-        '"TODO: what it is. Seen on 4 of 7 lines."', "Order id from the orders service.", 1)
+    import re
+    edited = re.sub(r'(- id: order\.id\n(?:.*\n){2}\s*brief: )"[^"\n]*"', r"\1Order id from the orders service.",
+                    f.read_text(encoding="utf-8"), count=1)
+    assert "Order id from the orders service." in edited
     f.write_text(edited, encoding="utf-8")
     (tmp_path / "logwarden.toml").write_text('profile = "essential"\nfields = "logwarden-fields.yaml"\n'
                                              '[source]\nformat = "jsonl"\n', encoding="utf-8")

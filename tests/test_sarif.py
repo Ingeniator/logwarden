@@ -152,3 +152,22 @@ def test_claim1_fingerprints_survive_moved_lines(tmp_path):
     before, after = sarif(10, "before"), sarif(30, "after")
     assert before == after                                    # same alerts after the code moved
     assert before[0]["primaryLocationLineHash"] != before[1]["primaryLocationLineHash"]   # two calls, two alerts
+
+
+def test_v0_10_2_callsite_when_logging_is_set_up_in_conftest(pytester, monkeypatch, tmp_path):
+    """pytest imports conftest.py before pytest_configure: the plugin sets LOGWARDEN_CALLSITE
+    when it is imported, so a configure() at the top of conftest.py sees it."""
+    out = tmp_path / "cap.jsonl"
+    monkeypatch.delenv("LOGWARDEN_CALLSITE", raising=False)
+    monkeypatch.setenv("LOGWARDEN_CAPTURE", str(out))
+    pytester.makeconftest(
+        "from logwarden.logging import configure\n"
+        "configure(service_name='api', service_version='1', environment='test')\n")
+    pytester.makepyfile(
+        "import structlog\n"
+        "def test_x():\n"
+        "    structlog.get_logger('app').info('order_created')\n")
+    pytester.runpytest_subprocess().assert_outcomes(passed=1)
+    line = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+    assert line["code.file.path"].endswith("test_v0_10_2_callsite_when_logging_is_set_up_in_conftest.py")
+    assert isinstance(line["code.line.number"], int)

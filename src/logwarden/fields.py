@@ -84,7 +84,8 @@ def _group(p: Proposal, names: list[str], source: str, today: str, indent: str) 
            f"{i2}attributes:"]
     for n in names:
         typ, lines = p.declare[n]
-        hint = "" if "." in n else f" A bare name: better namespaced (e.g. myservice.{n}) in the code."
+        hint = (" Dotted: the standard (§2) names a service's own fields snake_case without dots;"
+                " dots are for semconv names." if "." in n else "")
         out += [f"{i3}- id: {n}",
                 f"{i3}  type: {typ}",
                 f"{i3}  stability: development",
