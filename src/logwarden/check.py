@@ -4,6 +4,7 @@ The result dict is a public interface (`--json`, MCP, CI): only add keys.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import math
@@ -108,7 +109,7 @@ def parse_lines(text: str) -> tuple[list[Record], int]:
     return records, total
 
 
-def _weaver_type(v: Any) -> str:
+def _scalar_type(v: Any) -> str:
     if isinstance(v, bool):
         return "boolean"
     if isinstance(v, (int, float)):
@@ -118,7 +119,27 @@ def _weaver_type(v: Any) -> str:
     return "string"
 
 
+def _array_type(v: list) -> str | None:
+    """string[], int[], double[] or boolean[] for a list whose items are all one type
+    (ints and doubles together are double[]); None for an empty or mixed list, or one with
+    nulls, lists or objects in it."""
+    if not v or any(x is None or isinstance(x, (dict, list)) for x in v):
+        return None
+    kinds = {_scalar_type(x) for x in v}
+    if kinds == {"int", "double"}:
+        return "double[]"
+    return f"{kinds.pop()}[]" if len(kinds) == 1 else None
+
+
+def _weaver_type(v: Any) -> str:
+    if isinstance(v, list):
+        return _array_type(v) or "string"
+    return _scalar_type(v)
+
+
 def _weaver_value(v: Any) -> Any:
+    if isinstance(v, list) and _array_type(v):
+        return v
     if isinstance(v, (dict, list)):
         return json.dumps(v, separators=(",", ":"), ensure_ascii=False)
     if v is None:
@@ -137,8 +158,16 @@ def _text(v: Any) -> Any:
     return json.dumps(v, separators=(",", ":"), ensure_ascii=False)
 
 
-def to_sample(obj: dict) -> dict:
-    """One structlog-style JSON record -> Weaver live-check log sample."""
+def _attribute(name: str, v: Any, declared: dict[str, str]) -> dict:
+    """An empty list has no item type to go by: it gets the field's declared array type, if any."""
+    if v == [] and declared.get(name, "").endswith("[]"):
+        return {"name": name, "type": declared[name], "value": []}
+    return {"name": name, "type": _weaver_type(v), "value": _weaver_value(v)}
+
+
+def to_sample(obj: dict, declared: dict[str, str] | None = None) -> dict:
+    """One structlog-style JSON record -> Weaver live-check log sample. `declared`: field name ->
+    registry type, used only for empty lists."""
     level = obj.get("level")
     level_s = "" if _falsy(level) else str(level)
     event = _text(obj.get("event"))
@@ -151,10 +180,7 @@ def to_sample(obj: dict) -> dict:
         "severity_text": level_s.upper(),
         "trace_id": None if _falsy(obj.get("trace_id")) else _text(obj["trace_id"]),
         "span_id": None if _falsy(obj.get("span_id")) else _text(obj["span_id"]),
-        "attributes": [
-            {"name": k, "type": _weaver_type(v), "value": _weaver_value(v)}
-            for k, v in obj.items() if k not in _RECORD_KEYS
-        ],
+        "attributes": [_attribute(k, v, declared or {}) for k, v in obj.items() if k not in _RECORD_KEYS],
     }}
 
 
@@ -570,7 +596,8 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
 
 
 def registry_types(binary: str, registry: Path) -> dict[str, str]:
-    """Attribute name -> int, double, boolean or string, from the resolved registry (for CSV)."""
+    """Attribute name -> registry type (int, double, boolean, string, string[], ...), for CSV values
+    and empty lists."""
     proc = subprocess.run([binary, "registry", "resolve", "-r", str(registry), "--include-unreferenced",
                            "--format", "json", "--skip-policies", "--quiet"],
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -613,10 +640,13 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
                 raise CheckError(str(e)) from e
             registry = _fields_registry(fields, Path(tmp) / "registry", base) if fields else base
         reg = registry
-        inp = read(text, policy.source if policy else None, lambda: registry_types(binary, reg))
+        types = functools.cache(lambda: registry_types(binary, reg))
+        inp = read(text, policy.source if policy else None, types)
         records, bad = inp.records, inp.bad
-        reports = live_check(binary, registry, [to_sample(r.obj) for r in records], work, Path(tmp),
-                             keep=out is not None)
+        # An empty list is typed from the registry, which costs one more Weaver call: only then.
+        declared = types() if any(v == [] for r in records for v in r.obj.values()) else {}
+        reports = live_check(binary, registry, [to_sample(r.obj, declared) for r in records], work,
+                             Path(tmp), keep=out is not None)
         found = collect({"samples": reports}, records, bad, upstreams,
                         events=policy.events if policy else None,
                         events_path=policy.events_path if policy else None,

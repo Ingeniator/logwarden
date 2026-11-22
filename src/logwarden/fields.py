@@ -28,11 +28,13 @@ class Proposal:
 
 
 def _type(values: list) -> str:
-    kinds = Counter(check._weaver_type(v) for v in values if v is not None)
+    """The most common type; ints with doubles are double. Empty lists say only "a list"."""
+    kinds = Counter(check._weaver_type(v) for v in values if v is not None and v != [])
     if not kinds:
-        return "string"
-    if set(kinds) == {"int", "double"}:
-        return "double"
+        return "string[]" if [] in values else "string"
+    for ints, doubles in (("int", "double"), ("int[]", "double[]")):
+        if set(kinds) == {ints, doubles}:
+            return doubles
     return kinds.most_common(1)[0][0]
 
 

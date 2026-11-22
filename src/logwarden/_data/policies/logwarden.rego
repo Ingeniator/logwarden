@@ -160,6 +160,17 @@ attr_text(v) := format_int(v, 10) if {
 	v == floor(v)
 }
 
+# The text the value rules scan. A list (string[], int[]) is scanned item by item, one per
+# line, so items never join into one match (e.g. digits of two numbers into a card number).
+value_text(v) := attr_text(v) if {
+	not is_array(v)
+}
+
+value_text(v) := concat("\n", items) if {
+	is_array(v)
+	items := [t | some x in v; t := attr_text(x)]
+}
+
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name, "match": "key"}, msg) if {
 	name := input.sample.attribute.name
 	sensitive_name(name)
@@ -182,7 +193,7 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
 	name := input.sample.attribute.name
-	t := attr_text(input.sample.attribute.value)
+	t := value_text(input.sample.attribute.value)
 	low := lower(t)
 	some kind, pattern in secret_values
 	some hint in secret_hints[kind]
@@ -193,7 +204,7 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 
 deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
 	name := input.sample.attribute.name
-	t := attr_text(input.sample.attribute.value)
+	t := value_text(input.sample.attribute.value)
 	count(t) >= 13
 	digit_count(t) >= 13
 	digit_run(t)

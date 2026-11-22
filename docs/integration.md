@@ -360,6 +360,11 @@ findings `standard` would add are such unknown fields
 (`outside_profile_unknown_fields` in `--json`). Fields that several services share go into logwarden's
 shared registry instead, through a PR to this repo.
 
+A field logged as a list is checked as a list: declare it as `string[]`, `int[]`, `double[]` or
+`boolean[]`. A list whose items are all of one type has that array type (ints and doubles
+together are `double[]`); an empty list takes the declared array type. A list with mixed items,
+nulls, lists or objects is checked as JSON text, so declare such a field as `string`.
+
 The order of precedence is `--fields`, then `$LOGWARDEN_FIELDS`, then the config, then
 `./logwarden-fields.yaml`. Unknown config keys produce a warning.
 
