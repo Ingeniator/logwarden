@@ -230,6 +230,8 @@ logwarden:
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
+![A merge request's Reports tab: Code Quality found 1 new finding and 1 fixed finding, each linked to its line in app.py](img/gitlab-code-quality.png)
+
 - It runs the Docker image, which has Weaver and the semantic conventions inside, so the job
   needs no internet access. Mirror the image into your registry and pin it by digest if you like.
 - `--codequality` writes a [Code Quality report](https://docs.gitlab.com/ci/testing/code_quality/):
