@@ -11,13 +11,13 @@ prompts, dashboards and other tools depend on them.
 |---|---|
 | **Rule ids** | The ids below. A rule may get stricter or find more, but an id never changes meaning. |
 | **Exit codes** | `0` no violations, `1` violations, `2` usage or setup error, for every command. |
-| **CLI** | Command names and options, and what they write (`--json`, `--snapshot`, `--sarif`, `--codequality`, `--metrics`, `--markdown`, `--html`). |
+| **CLI** | Command names and options, and what they write (`--json`, `--snapshot`, `--sarif`, `--codequality`, `--metrics`, `--markdown`, `--html`). With `LOGWARDEN_LOG_FORMAT=json`, the fields and `event` names of logwarden's own records (new events may be added). |
 | **`--json` keys** | The keys of the result and of each finding, rule and service entry. |
 | **Config** | `[tool.logwarden]` / `logwarden.toml` keys: `fields`, `baseline`, `disable`, `upstreams`, `events`, `profile`, `[source]` (`format`, `message_field`, `ignore_fields`, `service_field`); the fields file format. |
 | **Baseline and snapshot files** | `format: 1`. A baseline written by an older version keeps working. |
 | **Profiles** | `essential` stays `adr_sensitive_data`, `adr_non_json_line` and `adr_missing_required`; `standard` is every rule. |
 | **Metrics** | `logwarden_lines_total`, `logwarden_lines_with_violations_total`, `logwarden_violations_total` and their labels (`service`, `rule`). |
-| **Environment variables** | `LOGWARDEN_CAPTURE`, `LOGWARDEN_FIELDS`, `LOGWARDEN_CACHE`, `LOGWARDEN_SEMCONV`, `WEAVER`, `LOGWARDEN_ES_AUTH`, `LOGWARDEN_ES_CA`, `LOGWARDEN_PUSHGATEWAY_AUTH`, and those read by `configure()` (`LOGWARDEN_LEVEL`, `LOGWARDEN_CALLSITE`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `SERVICE_VERSION`, `DEPLOYMENT_ENVIRONMENT`). |
+| **Environment variables** | `LOGWARDEN_CAPTURE`, `LOGWARDEN_FIELDS`, `LOGWARDEN_LOG_FORMAT`, `LOGWARDEN_CACHE`, `LOGWARDEN_SEMCONV`, `WEAVER`, `LOGWARDEN_ES_AUTH`, `LOGWARDEN_ES_CA`, `LOGWARDEN_PUSHGATEWAY_AUTH`, and those read by `configure()` (`LOGWARDEN_LEVEL`, `LOGWARDEN_CALLSITE`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `SERVICE_VERSION`, `DEPLOYMENT_ENVIRONMENT`). |
 | **CI integrations** | GitHub Action inputs and outputs; GitLab template job names (`.logwarden`, `.logwarden-production`) and their `LOGWARDEN_*` variables. |
 | **Python API** | `logwarden.logging.configure()` and the helpers it exports, `logwarden.testing`, the pytest plugin. |
 | **MCP** | Tool names (`check_logs`, `explain_rule`, `list_rules`, `get_standard`) and their parameters. |

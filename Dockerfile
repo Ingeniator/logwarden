@@ -8,7 +8,10 @@ LABEL org.opencontainers.image.source="https://github.com/Ingeniator/logwarden" 
       org.opencontainers.image.description="Guardrail for structured logs: checks JSON-lines and OTLP logs against the logwarden logging standard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
+# logwarden's own messages as JSON records that pass its standard: a container's output usually
+# ends up in a log pipeline. LOGWARDEN_LOG_FORMAT=text for plain text.
 ENV LOGWARDEN_CACHE=/opt/logwarden \
+    LOGWARDEN_LOG_FORMAT=json \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1

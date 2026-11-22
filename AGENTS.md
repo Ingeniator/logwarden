@@ -20,6 +20,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
 | `src/logwarden/sarif.py` | SARIF 2.1.0 for `check --sarif` (location from `code.file.path`/`code.line.number`) and `lint-code --sarif`; schema in `tests/data/` |
 | `src/logwarden/codequality.py`, `ci/gitlab/logwarden.gitlab-ci.yml` | GitLab Code Quality report (`--codequality`, same locations and fingerprints as SARIF, one fingerprint per finding) and the GitLab CI template (Docker image, offline, allowed failure on exit 1; never `-o`, whose work files hold logged values) |
+| `src/logwarden/selflog.py` | logwarden's own messages on stderr: plain text, or JSON records that pass the standard (`LOGWARDEN_LOG_FORMAT=json`, `--log-format`; default in the Docker image). `cli._err`/`_info` call it with a constant event name; `logwarden_detail` is declared in the registry. `tests/test_selflog.py` checks logwarden's own output with `--profile standard` |
 | `src/logwarden/fetch.py` | `logwarden fetch` (newest lines of a window from Elasticsearch; credentials only from the environment) and the Pushgateway push (`check --pushgateway`) |
 | `integrations/grafana/logwarden.json` | Grafana dashboard for the pushed metrics (scheduled checks) |
 | `src/logwarden/fields.py` | `init --from`: proposes the fields file from a `standard` run (`check.declarable`, `check.NOT_DECLARED`), appends without a YAML library, sets `profile` |
@@ -114,6 +115,13 @@ logged value of a possibly sensitive field.
 - Weaver 0.28 emits findings as `{id, level, message}`. `summarise` also accepts the older
   `advice_type`/`advice_level` names.
 - Never print to stdout outside the result. MCP uses stdio, and `--json` must stay parseable.
+- Messages go to stderr only through `cli._err`/`cli._info` (or `selflog.emit`), each with a
+  constant snake_case event name, so logwarden's own output passes its standard in JSON mode.
+  Never `print(..., file=sys.stderr)`.
+- Weaver judges each sample on its own, so large inputs run in parallel chunks
+  (`check.live_check`). A new Rego rule must not need other samples. Guard an expensive
+  regular expression with a cheap `contains` on text every match must have (see the
+  sensitive-data rules): Weaver's Rego engine runs it on every value.
 
 ## Releasing
 
