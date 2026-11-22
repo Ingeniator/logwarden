@@ -12,6 +12,7 @@ pipx install logwarden          # or a global CLI
 uvx logwarden check logs.jsonl  # or no install at all (needs uv)
 
 logwarden init --agent          # logwarden-fields.yaml + a logwarden section in AGENTS.md
+logwarden init --from logs.jsonl   # declare the fields these logs use, set profile = "standard"
 ```
 
 Weaver, which does the actual checking, and the OpenTelemetry semantic conventions are
@@ -23,7 +24,7 @@ access in CI? See [Without internet access](#without-internet-access).
 conventions inside:
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 check logs.jsonl
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 check logs.jsonl
 ```
 
 ### Without internet access
@@ -127,7 +128,7 @@ instrumentation scope) and then runs the same check:
 ```bash
 logwarden capture -o logs.jsonl -- npm test        # runs the command with OTEL_* set, then checks
 logwarden capture -o logs.jsonl                    # or receive on :4318 until Ctrl-C / SIGTERM
-docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 capture --host 0.0.0.0
+docker run --rm -p 4318:4318 -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.10.0 capture --host 0.0.0.0
 ```
 
 With a command, it sets `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_LOGS_EXPORTER=otlp` and the
@@ -142,13 +143,13 @@ GitHub Actions:
 
 ```yaml
 - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-- uses: Ingeniator/logwarden@v0.9.0
+- uses: Ingeniator/logwarden@v0.10.0
   with:
     logs: logs.jsonl
     # fail: "false"     # report only, while a legacy service is being migrated
 ```
 
-Other CI systems: `uvx logwarden==0.9.0 check logs.jsonl`. The exit code is 0 when the logs
+Other CI systems: `uvx logwarden==0.10.0 check logs.jsonl`. The exit code is 0 when the logs
 are clean, 1 when there are violations, and 2 when setup failed.
 
 **Migrating an existing service:** record a baseline so CI fails only on new problems,
@@ -194,7 +195,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.9.0
+  - uses: Ingeniator/logwarden@v0.10.0
     with:
       logs: logs.jsonl
       comment: "true"
@@ -226,7 +227,7 @@ logwarden:
   extends: .logwarden
   needs: [{job: test, artifacts: true}]     # the job that writes logs.jsonl
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.9.0   # your copy of ghcr.io/ingeniator/logwarden
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.0   # your copy of ghcr.io/ingeniator/logwarden
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
@@ -271,7 +272,7 @@ permissions:
   security-events: write        # for sarif: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl uv run pytest
-  - uses: Ingeniator/logwarden@v0.9.0
+  - uses: Ingeniator/logwarden@v0.10.0
     with:
       logs: logs.jsonl
       sarif: "true"
@@ -280,7 +281,7 @@ steps:
 `lint-code --sarif FILE` does the same for the source rules. Upload it in its own step:
 
 ```yaml
-  - run: uvx logwarden==0.9.0 lint-code --sarif lint.sarif src/ || true
+  - run: uvx logwarden==0.10.0 lint-code --sarif lint.sarif src/ || true
   - uses: github/codeql-action/upload-sarif@v3
     with: {sarif_file: lint.sarif, category: logwarden-lint-code}
 ```
@@ -341,7 +342,14 @@ rules are listed with their reasons in every result.
 
 `fields` lists fields only this service logs. When there's no config, `./logwarden-fields.yaml`
 is used if it exists. The template that `logwarden init` creates explains the format and
-when a field belongs there. Fields that several services share go into logwarden's
+when a field belongs there. `logwarden init --from LOGS` fills it from real logs (any input
+`check` reads, with the same `--format` and `[source]` options): it declares every field the
+registry doesn't know, with its type and how many lines had it, and never a logged value.
+Fields that a rule wants renamed or dropped (synonyms, underscore semconv names, sensitive
+data) are listed in a comment instead. Rerunning it adds new fields and keeps your edits. It
+also sets `profile = "standard"`. Under `essential`, the summary says how many of the
+findings `standard` would add are such unknown fields
+(`outside_profile_unknown_fields` in `--json`). Fields that several services share go into logwarden's
 shared registry instead, through a PR to this repo.
 
 The order of precedence is `--fields`, then `$LOGWARDEN_FIELDS`, then the config, then
@@ -440,7 +448,7 @@ fields and failure context are actually present, so it doesn't replace logwarden
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Ingeniator/logwarden
-    rev: v0.9.0
+    rev: v0.10.0
     hooks:
       - id: logwarden-lint-code
 ```

@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "ok": false,
   "records": 3,
   "skipped_lines": 1,
@@ -215,6 +215,7 @@
   ],
   "profile": "standard",
   "outside_profile": 0,
+  "outside_profile_unknown_fields": 0,
   "lines_with_violations": 4,
   "fix_first": [
     {

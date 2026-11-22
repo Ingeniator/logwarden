@@ -99,7 +99,7 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Per-service metrics: a breakdown in every output, and `--metrics` in Prometheus text format.
 - pre-commit hook for `lint-code`.
 
-### M7 (v0.9.0): a first useful result in 10 minutes, without code changes
+### M7 (v0.9.0): a first useful result in 10 minutes, without code changes (done)
 - Rule profiles: `essential` (sensitive data, non-JSON lines, required fields) to start with,
   `standard` (every rule) as the default.
 - Ranked fixes: findings grouped by source line or logger and event, "Fix first" in every report.
@@ -110,7 +110,7 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
 - Decided 2026-11-22: no long-running `watch` service. The team using logwarden runs it in CI
   only, with no shared state, and an hourly job gives the same view with nothing to operate.
 
-### M8 (v0.10.0): from `essential` to the full standard in one reviewed change
+### M8 (v0.10.0): from `essential` to the full standard in one reviewed change (done)
 - `init --from LOGS` writes the fields file from real logs, declaring custom fields but not
   synonyms or sensitive-looking fields; the summary shows how big the move to `standard` is.
 - Weekly workflow that opens a PR for new Weaver and semconv pins.

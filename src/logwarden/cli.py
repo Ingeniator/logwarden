@@ -388,10 +388,40 @@ def upsert_block(file: Path, snippet: str) -> str:
     return f"added logwarden section to {file}"
 
 
+def _init_from(a: argparse.Namespace, d: Path) -> None:
+    """Declare the custom fields seen in real logs, list the ones to fix, turn on `standard`."""
+    from logwarden import fields as lwfields
+    text = _read_input(a.source_logs)
+    cfg = _load_config(d)
+    target = Path(cfg.fields) if cfg.fields else d / FIELDS_DEFAULT
+    policy = check.Policy(disabled={}, source=source_of(cfg, a), profile="standard")
+    try:
+        found, inp = check._evaluate(text, fields=target if target.is_file() else None, registry=None,
+                                     out=None, upstreams=[], policy=policy)
+    except check.CheckError as e:
+        raise UsageError(f"init --from: {e}") from e
+    p = lwfields.propose(found, inp.records)
+    source = "-" if a.source_logs == "-" else Path(a.source_logs).name
+    added, flagged = lwfields.write(target, p, source)
+    kept = len(p.declare) - len(added)
+    print(f"{target}: declared {len(added)} new field{'' if len(added) == 1 else 's'}"
+          + (f" ({kept} already there)" if kept else "")
+          + (f"; {len(flagged)} to fix in the code, listed at the end" if flagged else ""))
+    print(lwfields.set_profile(d))
+    print("next: review the fields file (describe each field, drop any that semconv already names), "
+          "then run 'logwarden check <logs>'")
+
+
 def cmd_init(a: argparse.Namespace) -> int:
     d = Path(a.dir)
     if not d.is_dir():
         raise UsageError(f"init: no such directory: {a.dir}")
+    if a.source_logs:
+        _init_from(a, d)
+        if a.agent:
+            snippet = data.path("templates/AGENTS.snippet.md").read_text(encoding="utf-8")
+            print(upsert_block(d / "AGENTS.md", snippet))
+        return 0
     target = d / FIELDS_DEFAULT
     if target.exists():
         print(f"kept existing {target}")
@@ -576,6 +606,10 @@ def parser() -> argparse.ArgumentParser:
     i = sub.add_parser("init", help="add logwarden files to a project")
     i.add_argument("dir", nargs="?", default=".")
     i.add_argument("--agent", action="store_true", help="also add a logwarden section to AGENTS.md")
+    i.add_argument("--from", dest="source_logs", metavar="LOGS",
+                   help="declare the custom fields these logs use in the fields file (not synonyms or "
+                        "sensitive fields: those are listed to fix), and set profile = \"standard\"")
+    _input_args(i)
     i.set_defaults(fn=cmd_init)
 
     s = sub.add_parser("setup", help="download weaver and the semantic conventions if missing; print weaver's path")

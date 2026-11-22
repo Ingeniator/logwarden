@@ -22,6 +22,8 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/codequality.py`, `ci/gitlab/logwarden.gitlab-ci.yml` | GitLab Code Quality report (`--codequality`, same locations and fingerprints as SARIF, one fingerprint per finding) and the GitLab CI template (Docker image, offline, allowed failure on exit 1; never `-o`, whose work files hold logged values) |
 | `src/logwarden/fetch.py` | `logwarden fetch` (newest lines of a window from Elasticsearch; credentials only from the environment) and the Pushgateway push (`check --pushgateway`) |
 | `integrations/grafana/logwarden.json` | Grafana dashboard for the pushed metrics (scheduled checks) |
+| `src/logwarden/fields.py` | `init --from`: proposes the fields file from a `standard` run (`check.declarable`, `check.NOT_DECLARED`), appends without a YAML library, sets `profile` |
+| `scripts/update_pins.py`, `.github/workflows/update-pins.yml` | Weekly pin update: new Weaver and semconv versions with the archive SHA-256, tests, a PR |
 | `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |

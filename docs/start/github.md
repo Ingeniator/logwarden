@@ -46,9 +46,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt logwarden==0.9.0 pytest
+      - run: pip install -r requirements.txt logwarden==0.10.0 pytest
       - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
-      - uses: Ingeniator/logwarden@v0.9.0
+      - uses: Ingeniator/logwarden@v0.10.0
         with:
           logs: logs.jsonl
           comment: "true"
@@ -70,7 +70,10 @@ problem in a new place is *new*, while one more line with a problem `main` alrea
 ## Next
 
 - Fix the top places in **Fix first**.
-- When `essential` is clean, set `profile = "standard"` for the full standard, and remove
+- When `essential` is clean, move to the full standard in one reviewed change:
+  `uvx logwarden init --from logs.jsonl` declares your service's own fields in
+  `logwarden-fields.yaml` (names and types, no values), lists the fields to rename instead,
+  and sets `profile = "standard"`. Review the file, commit it with `logwarden.toml`. Then remove
   `fail: "false"` to block new violations.
 - Findings on the source line in the diff (SARIF), baselines and more: the
   [integration guide](../integration.md#3-check-in-ci).

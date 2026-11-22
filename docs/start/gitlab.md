@@ -10,9 +10,9 @@ If your runners can pull from `ghcr.io`, skip this step. Otherwise mirror the im
 registry (on a machine that can reach both):
 
 ```bash
-docker pull ghcr.io/ingeniator/logwarden:0.9.0
-docker tag ghcr.io/ingeniator/logwarden:0.9.0 registry.example.com/mirror/logwarden:0.9.0
-docker push registry.example.com/mirror/logwarden:0.9.0
+docker pull ghcr.io/ingeniator/logwarden:0.10.0
+docker tag ghcr.io/ingeniator/logwarden:0.10.0 registry.example.com/mirror/logwarden:0.10.0
+docker push registry.example.com/mirror/logwarden:0.10.0
 ```
 
 Runners without internet access also need GitLab's own helper image in a registry they can
@@ -25,7 +25,7 @@ Save the template in your repository as `ci/logwarden.gitlab-ci.yml`:
 ```bash
 mkdir -p ci
 curl -fsSL -o ci/logwarden.gitlab-ci.yml \
-  https://raw.githubusercontent.com/Ingeniator/logwarden/v0.9.0/ci/gitlab/logwarden.gitlab-ci.yml
+  https://raw.githubusercontent.com/Ingeniator/logwarden/v0.10.0/ci/gitlab/logwarden.gitlab-ci.yml
 ```
 
 And start with the `essential` rules: no secrets or personal data, every line is JSON, and the
@@ -78,7 +78,7 @@ logwarden:
   extends: .logwarden
   needs: [{job: test, artifacts: true}]
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.9.0   # your copy from step 1; delete the line to use ghcr.io
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.0   # your copy from step 1; delete the line to use ghcr.io
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
@@ -106,7 +106,7 @@ logwarden-production:
   extends: .logwarden-production
   rules: [{if: '$CI_PIPELINE_SOURCE == "schedule"'}]
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.9.0
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.0
     LOGWARDEN_ES_URL: https://elasticsearch.example.com:9200
     LOGWARDEN_ES_INDEX: "logs-shop-*"
     LOGWARDEN_ARGS: "--message-field log"           # if the JSON line is in a `log` field
@@ -126,5 +126,9 @@ Scheduled pipelines also run your other jobs. To run only this one on the schedu
 ## Next
 
 - Fix the top places in **Fix first**.
-- When `essential` is clean, set `profile = "standard"` for the full standard.
+- When `essential` is clean, move to the full standard in one reviewed change:
+  `uvx logwarden init --from logs.jsonl` declares your service's own fields in
+  `logwarden-fields.yaml` (names and types, no values), lists the fields to rename instead,
+  and sets `profile = "standard"`. Review the file, commit it with `logwarden.toml`. (the
+  `logs.jsonl` artifact of the test job).
 - More options: the [integration guide](../integration.md#gitlab-ci).
