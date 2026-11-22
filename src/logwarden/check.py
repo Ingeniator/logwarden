@@ -21,6 +21,12 @@ _SEVERITY = {"debug": 5, "info": 9, "warning": 13, "warn": 13, "error": 17, "cri
 _RECORD_KEYS = {"timestamp", "level", "event", "trace_id", "span_id"}
 _NAMING_RULES = {"adr_banned_synonym", "adr_semconv_prefix"}
 NON_JSON = "adr_non_json_line"
+# Rule profiles: `essential` is what any service should pass as it is; `standard` is every rule.
+PROFILES: dict[str, frozenset[str] | None] = {
+    "essential": frozenset({"adr_sensitive_data", NON_JSON, "adr_missing_required"}),
+    "standard": None,
+}
+FIX_FIRST = 10
 UPSTREAM = "adr_upstream_failure_coverage"
 EVENT_CATALOG = "adr_event_catalog"
 _SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -57,6 +63,7 @@ class Input:
     total: int
     format: str = "jsonl"
     missing_columns: list[str] = field(default_factory=list)
+    matched: int | None = None
 
 
 def read(text: str, src: sources.Source | None = None, types=dict) -> Input:
@@ -73,7 +80,7 @@ def read(text: str, src: sources.Source | None = None, types=dict) -> Input:
             records.append(Record(i.n, i.obj, i.id, svc, i.file_line))
         else:
             bad.append(BadLine(i.n, i.kind, i.text or "", i.id, svc, i.file_line))
-    return Input(records, bad, loaded.total, loaded.format, loaded.missing_columns)
+    return Input(records, bad, loaded.total, loaded.format, loaded.missing_columns, loaded.matched)
 
 
 def parse(text: str) -> tuple[list[Record], list[BadLine], int]:
@@ -171,6 +178,16 @@ class Policy:
     events: dict | None = None          # the event catalog's events, when configured
     events_path: str | None = None
     source: sources.Source = field(default_factory=sources.Source)
+    profile: str = "standard"
+
+    def outside(self, rule: str) -> bool:
+        """The rule isn't part of the chosen profile."""
+        rules = PROFILES.get(self.profile)
+        return rules is not None and rule not in rules
+
+    def off(self, rule: str) -> bool:
+        """Not checked: disabled, or outside the profile."""
+        return rule in self.disabled or self.outside(rule)
 
 
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
@@ -318,29 +335,73 @@ class Outcome:
     off: dict[str, int]         # disabled rule -> violations not counted
     baselined: int = 0
     fixed: int = 0
+    outside: int = 0            # violations of rules outside the profile, not counted
 
 
 def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
     policy = policy or Policy()
     off = {r: 0 for r in policy.disabled}
-    kept = []
+    enabled = []
     for f in found:
         if f["rule"] in off:
             off[f["rule"]] += f["level"] == "violation"
         else:
-            kept.append(f)
+            enabled.append(f)
+    kept = [f for f in enabled if not policy.outside(f["rule"])]
     violations = violations_of(kept)
+    outside = len(violations_of(enabled)) - len(violations)
 
     baselined = fixed = 0
     if policy.baseline is not None:
         known = {(e["rule"], e["field"], e["logger"], e["event"]) for e in policy.baseline["entries"]
-                 if e["rule"] not in off}
+                 if not policy.off(e["rule"])}
         seen = {fingerprint(v) for v in violations}
         new = [v for v in violations if fingerprint(v) not in known]
         baselined = len(violations) - len(new)
         fixed = len(known - seen)
         violations = new
-    return Outcome(kept, violations, off, baselined, fixed)
+    return Outcome(kept, violations, off, baselined, fixed, outside)
+
+
+def fix_first(violations: list[dict], limit: int = FIX_FIRST) -> list[dict]:
+    """Violations grouped by what causes them, the biggest first.
+
+    A group is one source line (code.file.path + code.line.number), else one logger and event;
+    non-JSON lines form one group. Every log line belongs to exactly one group, so the shares
+    of all groups add up to 100% of the lines with violations.
+    """
+    groups: dict[tuple, dict] = {}
+    for v in violations:
+        if v["line"] is None:           # run-level findings (upstream coverage) have no line
+            continue
+        loc = v.get("loc")
+        if v["rule"] == NON_JSON:
+            key = ("non_json",)
+        elif loc and loc[1]:
+            key = ("code", loc[0], loc[1])
+        else:
+            key = ("logger", v["logger"], v["fp_event"])
+        g = groups.setdefault(key, {"lines": set(), "rules": {}, "fields": set(),
+                                    "logger": v["logger"] or None, "event": v["fp_event"]})
+        g["lines"].add(v["line"])
+        g["rules"][v["rule"]] = g["rules"].get(v["rule"], 0) + 1
+        if v["field"]:
+            g["fields"].add(v["field"])
+    total = len({ln for g in groups.values() for ln in g["lines"]})
+    out = []
+    for key, g in sorted(groups.items(), key=lambda kv: (-len(kv[1]["lines"]), str(kv[0]))):
+        kind = key[0]
+        out.append({
+            "kind": kind,
+            "where": f"{key[1]}:{key[2]}" if kind == "code" else None,
+            "logger": None if kind == "non_json" else g["logger"],
+            "event": None if kind == "non_json" else g["event"],
+            "lines": len(g["lines"]),
+            "share": round(100.0 * len(g["lines"]) / total, 1) if total else 0.0,
+            "rules": dict(sorted(g["rules"].items(), key=lambda kv: (-kv[1], kv[0]))),
+            "fields": sorted(g["fields"])[:10],
+        })
+    return out[:limit]
 
 
 def by_service(violations: list[dict], lines: dict[str, int]) -> list[dict]:
@@ -410,16 +471,21 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         "baseline_fixed": fixed,
         "disabled": [{"rule": r, "reason": policy.disabled[r], "count": off[r]} for r in sorted(off)],
         "services": by_service(violations, lines or {}),
+        "profile": policy.profile,
+        "outside_profile": o.outside,
+        "lines_with_violations": len({v["line"] for v in violations if v["line"] is not None}),
+        "fix_first": fix_first(violations),
         "input": {"format": inp.format if inp else "jsonl",
-                  "missing_columns": inp.missing_columns if inp else []},
+                  "missing_columns": inp.missing_columns if inp else [],
+                  "matched": inp.matched if inp else None},
     }
 
 
 def make_baseline(found: list[dict], policy: Policy | None = None) -> dict:
     """Baseline file content: the current violations (minus disabled rules), by fingerprint."""
-    disabled = (policy or Policy()).disabled
+    policy = policy or Policy()
     counts: dict[tuple, int] = {}
-    for v in violations_of([f for f in found if f["rule"] not in disabled]):
+    for v in violations_of([f for f in found if not policy.off(f["rule"])]):
         counts[fingerprint(v)] = counts.get(fingerprint(v), 0) + 1
     return {
         "tool": "logwarden",
@@ -622,12 +688,11 @@ def load_compare(path: Path) -> dict:
 def compare_with(found: list[dict], policy: Policy, events: dict, base: dict,
                  base_path: str | None = None) -> dict:
     """New, fixed and unchanged findings (by baseline key, so moved lines match) and events."""
-    off = set(policy.disabled)
     first: dict[tuple, dict] = {}
-    for v in violations_of([f for f in found if f["rule"] not in off]):
+    for v in violations_of([f for f in found if not policy.off(f["rule"])]):
         first.setdefault(fingerprint(v), v)
     known = {(e["rule"], e["field"] or "", e["logger"], e["event"]): e.get("count", 1)
-             for e in base["entries"] if e["rule"] not in off}
+             for e in base["entries"] if not policy.off(e["rule"])}
     new = sorted((v for k, v in first.items() if k not in known),
                  key=lambda f: (f["line"] is None, f["line"] or 0))
     fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}

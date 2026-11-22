@@ -84,7 +84,8 @@ def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None
     """Fields file and policy (disabled rules, baseline, input format) for a check run in `cwd`."""
     cfg = _load_config(cwd)
     policy = check.Policy(disabled=dict(cfg.disable), upstreams=list(cfg.upstreams),
-                          source=source_of(cfg, args))
+                          source=source_of(cfg, args),
+                          profile=getattr(args, "profile", None) or cfg.profile or "standard")
     if cfg.events:
         from logwarden import catalog
         p = Path(cfg.events)
@@ -172,6 +173,12 @@ def _check_text(text: str, a: argparse.Namespace) -> int:
     for path, render in targets:
         if path:
             _write(Path(path), render())
+    if getattr(a, "pushgateway", None):
+        from logwarden import fetch
+        try:
+            _err(f"pushed metrics to {fetch.push(a.pushgateway, report.metrics(result))}")
+        except fetch.FetchError as e:
+            raise UsageError(str(e)) from e
     if a.o:
         _err(f"full output in {a.o}")
     return 0 if result["ok"] else 1
@@ -284,6 +291,29 @@ def cmd_capture(a: argparse.Namespace) -> int:
         raise UsageError("capture: no log records arrived. Enable the OpenTelemetry SDK's logs "
                          "exporter (OTEL_LOGS_EXPORTER=otlp) with protocol http/protobuf or http/json")
     return _check_text(out.read_text(encoding="utf-8"), a)
+
+
+def cmd_fetch(a: argparse.Namespace) -> int:
+    from logwarden import fetch
+    try:
+        raw, got, matched = fetch.es(a.es, a.index, since=a.since, size=a.size, time_field=a.time_field,
+                                     query_string=a.query, auth=os.environ.get("LOGWARDEN_ES_AUTH"),
+                                     ca=a.ca or os.environ.get("LOGWARDEN_ES_CA"), insecure=a.insecure)
+    except fetch.FetchError as e:
+        raise UsageError(f"fetch: {e}") from e
+    if a.output == "-":
+        sys.stdout.buffer.write(raw)
+        sys.stdout.flush()
+    else:
+        try:
+            Path(a.output).write_bytes(raw)
+        except OSError as e:
+            raise UsageError(f"can't write {a.output}: {e}") from e
+    sample = f"the newest {got:,} of {matched:,}" if matched > got else f"all {got:,}"
+    _err(f"fetched {sample} log lines from the last {a.since} of '{a.index}'"
+         + ("" if a.output == "-" else f" into {a.output}") + "; check it with: logwarden check "
+         + (a.output if a.output != "-" else "-"))
+    return 0
 
 
 def cmd_lint_code(a: argparse.Namespace) -> int:
@@ -416,6 +446,15 @@ def _report_args(p: argparse.ArgumentParser) -> None:
                         "(default: the current directory)")
     p.add_argument("--metrics", metavar="FILE",
                    help="write per-service metrics in Prometheus text format (Pushgateway, textfile collector)")
+    p.add_argument("--pushgateway", metavar="URL",
+                   help="push the per-service metrics to a Prometheus Pushgateway, replacing the group "
+                        "(default group: /metrics/job/logwarden; credentials: $LOGWARDEN_PUSHGATEWAY_AUTH)")
+
+
+def _profile_arg(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--profile", choices=list(check.PROFILES),
+                   help="rules to check: essential (sensitive data, non-JSON lines, required fields; "
+                        "a first step on any service) or standard (every rule). Default: config, then standard")
 
 
 def _input_args(p: argparse.ArgumentParser) -> None:
@@ -453,6 +492,7 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
     c.add_argument("--baseline", metavar="FILE", help="fail only on findings not in FILE (default: config)")
     c.add_argument("--no-baseline", action="store_true", help="ignore the configured baseline")
+    _profile_arg(c)
     _report_args(c)
     _input_args(c)
     c.set_defaults(fn=cmd_check)
@@ -463,6 +503,7 @@ def parser() -> argparse.ArgumentParser:
                    help=f"baseline file (default: config 'baseline', then ./{config.DEFAULT_BASELINE})")
     b.add_argument("--fields", help="project-only fields file (as for check)")
     b.add_argument("--registry", help="full Weaver registry overlay (as for check)")
+    _profile_arg(b)
     _input_args(b)
     b.set_defaults(fn=cmd_baseline)
 
@@ -480,6 +521,7 @@ def parser() -> argparse.ArgumentParser:
     cap.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
     cap.add_argument("--baseline", metavar="FILE", help="as for check")
     cap.add_argument("--no-baseline", action="store_true", help="as for check")
+    _profile_arg(cap)
     _report_args(cap)
     cap.add_argument("command", nargs=argparse.REMAINDER, help="-- command to run, e.g. -- npm test")
     cap.set_defaults(fn=cmd_capture, registry=None, o=None)
@@ -495,6 +537,24 @@ def parser() -> argparse.ArgumentParser:
     fmt.add_argument("--markdown", action="store_true", help="Markdown table (with descriptions from the catalog)")
     _input_args(cat)
     cat.set_defaults(fn=cmd_catalog)
+
+    fe = sub.add_parser("fetch", help="fetch recent logs from Elasticsearch for check (scheduled checks)",
+                        description="Write the newest log lines of a time window from Elasticsearch as a "
+                                    "_search response, for 'logwarden check'. Credentials: LOGWARDEN_ES_AUTH "
+                                    "('ApiKey ...', 'Basic ...' or 'user:password'). The file holds the "
+                                    "logged values: don't publish it.")
+    fe.add_argument("--es", required=True, metavar="URL", help="Elasticsearch URL, e.g. https://es:9200")
+    fe.add_argument("--index", required=True, metavar="PATTERN", help="index or data stream, e.g. 'logs-*'")
+    fe.add_argument("--since", default="1h", help="time window: 30m, 1h, 1d (default 1h)")
+    fe.add_argument("--size", type=int, default=10_000,
+                    help="newest lines to fetch, at most 10000 (default); more matching lines make it a sample")
+    fe.add_argument("--time-field", default="@timestamp", help="timestamp field (default @timestamp)")
+    fe.add_argument("--query", metavar="QUERY",
+                    help="Lucene query string to narrow it down, e.g. 'kubernetes.namespace_name:shop'")
+    fe.add_argument("--ca", metavar="FILE", help="CA certificate for https (or $LOGWARDEN_ES_CA)")
+    fe.add_argument("--insecure", action="store_true", help="don't verify the TLS certificate")
+    fe.add_argument("-o", "--output", default="logwarden-es.json", help="where to write (- for stdout)")
+    fe.set_defaults(fn=cmd_fetch)
 
     lc = sub.add_parser("lint-code", help="check source code with logwarden's Semgrep rules (needs semgrep)",
                         description="Run logwarden's Semgrep rules (Python, JavaScript/TypeScript, Go, Java) "

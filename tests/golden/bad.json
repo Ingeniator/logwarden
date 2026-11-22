@@ -1,6 +1,6 @@
 {
   "tool": "logwarden",
-  "version": "0.7.0",
+  "version": "0.8.1",
   "ok": false,
   "records": 3,
   "skipped_lines": 1,
@@ -213,8 +213,77 @@
       "top_rule": "adr_non_json_line"
     }
   ],
+  "profile": "standard",
+  "outside_profile": 0,
+  "lines_with_violations": 4,
+  "fix_first": [
+    {
+      "kind": "logger",
+      "where": null,
+      "logger": "app.auth",
+      "event": "user_logged_in",
+      "lines": 1,
+      "share": 25.0,
+      "rules": {
+        "adr_sensitive_data": 1,
+        "adr_trace_context": 1
+      },
+      "fields": [
+        "password",
+        "trace_id"
+      ]
+    },
+    {
+      "kind": "logger",
+      "where": null,
+      "logger": "app.clients.llm",
+      "event": "upstream_call_failed",
+      "lines": 1,
+      "share": 25.0,
+      "rules": {
+        "adr_failure_context": 1
+      },
+      "fields": []
+    },
+    {
+      "kind": "logger",
+      "where": null,
+      "logger": "x",
+      "event": "Loaded # models",
+      "lines": 1,
+      "share": 25.0,
+      "rules": {
+        "adr_banned_synonym": 1,
+        "adr_environment_value": 1,
+        "adr_event_name": 1,
+        "adr_missing_required": 1,
+        "adr_semconv_prefix": 1,
+        "missing_attribute": 1
+      },
+      "fields": [
+        "deployment.environment.name",
+        "foo_bar",
+        "http_route",
+        "service.version",
+        "status"
+      ]
+    },
+    {
+      "kind": "non_json",
+      "where": null,
+      "logger": null,
+      "event": null,
+      "lines": 1,
+      "share": 25.0,
+      "rules": {
+        "adr_non_json_line": 1
+      },
+      "fields": []
+    }
+  ],
   "input": {
     "format": "jsonl",
-    "missing_columns": []
+    "missing_columns": [],
+    "matched": null
   }
 }

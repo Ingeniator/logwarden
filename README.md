@@ -9,8 +9,24 @@ way a test fails on a bug, so logs stay searchable, safe and useful when somethi
 [![CI](https://github.com/Ingeniator/logwarden/actions/workflows/ci.yml/badge.svg)](https://github.com/Ingeniator/logwarden/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Ingeniator/logwarden/blob/main/LICENSE)
 
+## Start here
+
+Pick the path that matches what you have. Each one ends with a first report in about 10
+minutes, and starts with the `essential` rules: no secrets or personal data in logs, every line
+is JSON, and every line says which service, version and environment wrote it.
+
+| You have | Start with | First result |
+|---|---|---|
+| Logs in Elasticsearch or Kibana | [Elasticsearch / Kibana](https://github.com/Ingeniator/logwarden/blob/main/docs/start/elasticsearch.md) | A report on the last hour of production logs. No code change. |
+| GitLab CI | [GitLab](https://github.com/Ingeniator/logwarden/blob/main/docs/start/gitlab.md) | New and fixed findings in every merge request. |
+| GitHub Actions | [GitHub](https://github.com/Ingeniator/logwarden/blob/main/docs/start/github.md) | A comment on every pull request. |
+| An AI coding agent | [AI agents](https://github.com/Ingeniator/logwarden/blob/main/docs/start/agents.md) | An agent that logs to the standard and checks its own work. |
+
+Every report starts with **Fix first**: the few places in the code that cause most of the
+violations. What stays stable between versions is in [STABILITY.md](https://github.com/Ingeniator/logwarden/blob/main/STABILITY.md).
+
 ```bash
-uvx logwarden check logs.jsonl      # any language: it reads JSON lines, a file or stdin
+uvx logwarden check logs.jsonl --profile essential   # or any file of JSON lines, in any language
 ```
 
 ## Why
@@ -88,7 +104,10 @@ CI, scripts and AI agents can rely on it.
 - **AI agents that log well.** A Claude Code plugin, an MCP server and an `AGENTS.md` section
   teach coding agents the standard and let them check their own work.
 
-## Use cases
+## More ways to use it
+
+The [Start here](#start-here) paths are the quickest way in. Everything below is what logwarden
+can do once it runs.
 
 ### 1. Gate pull requests in CI
 
@@ -102,7 +121,7 @@ permissions:
   pull-requests: write          # only for comment: "true"
 steps:
   - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
-  - uses: Ingeniator/logwarden@v0.8.1
+  - uses: Ingeniator/logwarden@v0.9.0
     with:
       logs: logs.jsonl
       comment: "true"
@@ -134,7 +153,7 @@ logwarden checks output, so the language doesn't matter.
 
 ```bash
 logwarden capture -o logs.jsonl -- npm test    # receive OTLP logs from any OTel SDK while the command runs
-docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.8.1 check logs.jsonl   # no Python needed
+docker run --rm -v "$PWD:/work" ghcr.io/ingeniator/logwarden:0.9.0 check logs.jsonl   # no Python needed
 ```
 
 There are setup recipes, with example output that passes, for

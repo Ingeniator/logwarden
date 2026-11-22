@@ -44,12 +44,20 @@ hooks:
 # Release notes are added to the nav by docs_hooks.py, newest first.
 nav:
   - Home: index.md
-  - The standard: standard.md
-  - Metrics standard (draft): metrics-standard.md
-  - Rules: rules.md
-  - Integration guide: integration.md
-  - Setup recipes:
-      - Node (pino): recipes/node.md
-      - Go (slog): recipes/go.md
-      - Java (logback): recipes/java.md
+  - Start here:
+      - Elasticsearch / Kibana: start/elasticsearch.md
+      - GitLab: start/gitlab.md
+      - GitHub: start/github.md
+      - AI agents: start/agents.md
+  - Reference:
+      - The standard: standard.md
+      - Rules: rules.md
+      - Stability: stability.md
+  - Advanced:
+      - Integration guide: integration.md
+      - Setup recipes:
+          - Node (pino): recipes/node.md
+          - Go (slog): recipes/go.md
+          - Java (logback): recipes/java.md
+      - Metrics standard (draft): metrics-standard.md
   - Roadmap: roadmap.md

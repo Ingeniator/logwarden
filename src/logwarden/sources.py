@@ -58,6 +58,7 @@ class Loaded:
     total: int
     format: str
     missing_columns: list[str] = field(default_factory=list)
+    matched: int | None = None     # Elasticsearch: hits that matched the query (more than returned = a sample)
 
 
 def _json_kind(v: Any) -> str:
@@ -150,8 +151,11 @@ def _es(text: str) -> Loaded:
     if not pages or not all(_is_response(p) for p in pages):
         raise SourceError("not an Elasticsearch _search response (no hits.hits); "
                           "use --format jsonl or csv for other exports")
-    items, n = [], 0
+    items, n, matched = [], 0, 0
     for page in pages:
+        t = page["hits"].get("total")
+        t = t.get("value") if isinstance(t, dict) else t
+        matched = None if matched is None or not isinstance(t, int) or isinstance(t, bool) else matched + t
         for hit in page["hits"]["hits"] or []:
             n += 1
             obj = _hit_obj(hit) if isinstance(hit, dict) else None
@@ -159,7 +163,11 @@ def _es(text: str) -> Loaded:
                 items.append(Item(n, None, json.dumps(hit)[:200], "search hit without _source"))
             else:
                 items.append(Item(n, obj, id=_str_or_none(hit.get("_id"))))
-    return Loaded(items, n, "es")
+    # Without track_total_hits Elasticsearch stops counting at 10,000 and says "gte"; a page
+    # without a total gives no sample size either.
+    exact = all(not isinstance(p["hits"].get("total"), dict) or p["hits"]["total"].get("relation", "eq") == "eq"
+                for p in pages)
+    return Loaded(items, n, "es", matched=matched if matched and exact else None)
 
 
 def _unescape(v: str) -> str:
