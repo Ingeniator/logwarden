@@ -8,7 +8,7 @@
 #     extends: .logwarden
 #     needs: [{job: test, artifacts: true}]   # the job that writes the logs, e.g. LOGWARDEN_CAPTURE=logs.jsonl pytest
 #     variables:
-#       LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.2   # your registry's copy of ghcr.io/ingeniator/logwarden
+#       LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.3   # your registry's copy of ghcr.io/ingeniator/logwarden
 #       LOGWARDEN_LOGS: logs.jsonl
 #
 # The image contains Weaver and the semantic conventions, so the job works offline.
@@ -21,7 +21,7 @@
     name: $LOGWARDEN_IMAGE
     entrypoint: [""]
   variables:
-    LOGWARDEN_IMAGE: ghcr.io/ingeniator/logwarden:0.10.2
+    LOGWARDEN_IMAGE: ghcr.io/ingeniator/logwarden:0.10.3
     LOGWARDEN_LOGS: logs.jsonl
     LOGWARDEN_ARGS: ""            # extra check options, e.g. --source-root /app or --message-field log
     LOGWARDEN_LOG_FORMAT: text    # the image writes JSON messages by default; job logs are read by people
@@ -68,7 +68,7 @@
 #     extends: .logwarden-production
 #     rules: [{if: '$CI_PIPELINE_SOURCE == "schedule"'}]
 #     variables:
-#       LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.2
+#       LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.3
 #       LOGWARDEN_ES_URL: https://elasticsearch.example.com:9200
 #       LOGWARDEN_ES_INDEX: "logs-shop-*"
 #       LOGWARDEN_PUSHGATEWAY: http://pushgateway.example.com:9091   # optional
@@ -85,7 +85,7 @@
     name: $LOGWARDEN_IMAGE
     entrypoint: [""]
   variables:
-    LOGWARDEN_IMAGE: ghcr.io/ingeniator/logwarden:0.10.2
+    LOGWARDEN_IMAGE: ghcr.io/ingeniator/logwarden:0.10.3
     LOGWARDEN_ES_URL: ""
     LOGWARDEN_ES_INDEX: "logs-*"
     LOGWARDEN_SINCE: "1h"

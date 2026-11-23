@@ -1,6 +1,6 @@
 {
   "name": "logwarden",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Guardrail for structured logs: a skill for writing good logs, the logwarden MCP server, and /logwarden:check.",
   "author": {
     "name": "Ingeniator",
