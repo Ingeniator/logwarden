@@ -107,7 +107,8 @@ def _disable(value, cfg: Config) -> None:
     if not isinstance(value, dict):
         cfg.errors.append(f"{cfg.source}: 'disable' needs a reason per rule: {example}")
         return
-    known = lwdata.rules()
+    from logwarden.metrics import RULES as metric_rules
+    known = set(lwdata.rules()) | metric_rules
     for rule, reason in value.items():
         if rule not in known:
             cfg.errors.append(f"{cfg.source}: disable: unknown rule '{rule}' (run: logwarden rules)")
