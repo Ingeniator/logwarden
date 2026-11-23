@@ -87,9 +87,10 @@ def test_claim7_old_names_say_what_to_use(tmp_path):
 @pytest.mark.weaver
 def test_claim8_each_field_is_defined_once(tmp_path):
     reg = check.base_registry(tmp_path / "base")
-    assert not (tmp_path / "base/semconv/gen-ai").exists() and (tmp_path / "base/semconv/http").is_dir()
+    sc = check.base_chain(tmp_path / "x").parent / "semconv"     # the cached chain (v0.10.3)
+    assert not (sc / "gen-ai").exists() and (sc / "http").is_dir()
     for name in ("mcp", "openai"):
-        assert not (tmp_path / "base/semconv" / name).exists()
+        assert not (sc / name).exists()
     p = subprocess.run([weaver.find(), "registry", "resolve", "-r", str(reg), "--include-unreferenced",
                         "--format", "json", "--skip-policies"], capture_output=True, text=True,
                        encoding="utf-8", errors="replace")

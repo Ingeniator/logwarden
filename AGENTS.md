@@ -14,7 +14,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | Path | Role |
 |---|---|
 | `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `fetch`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
-| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), profiles (`PROFILES`), `disable` and baseline, "Fix first" (`fix_first`), the result dict |
+| `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), profiles (`PROFILES`), `disable` and baseline, "Fix first" (`fix_first`), the result dict; the registry chain logwarden → GenAI → semconv (`base_registry`, `base_chain`: built once in the cache per pinned versions, `CHAIN_FORMAT` bumps it) |
 | `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv and GenAI semconv release archives (pinned SHA-256 in `SEMCONV_SHA256`, `GENAI_SHA256`) |
 | `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit), the self-contained HTML report, Prometheus metrics (`--metrics`) |
 | `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
