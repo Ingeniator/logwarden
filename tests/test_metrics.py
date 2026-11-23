@@ -171,3 +171,16 @@ def test_metrics_usage_errors(cli, tmp_path):
     p.write_text("this is { not prometheus\n")
     proc = cli("check", "--signal", "metrics", p, cwd=tmp_path)
     assert proc.returncode == 2 and "metrics:" in proc.stderr
+
+
+@pytest.mark.parametrize("base,hint", [
+    ("api_latency", "http.server.request.duration"), ("http_requests", "http.server.request.duration"),
+    ("http_request_size", "http.server.request.body.size"),
+    ("llm_prompt_token_usage", "gen_ai.client.inference.usage.input_tokens"),
+    ("llm_completion_token_usage", "gen_ai.client.inference.usage.output_tokens"),
+    ("llm_total_token_usage", None), ("orders", None)])
+def test_semconv_hint(base, hint):
+    names = ["http.server.request.duration", "http.server.request.body.size",
+             "gen_ai.client.inference.usage.input_tokens", "gen_ai.client.inference.usage.output_tokens"]
+    reg = metrics.Registry({n: {"instrument": "histogram", "unit": "s"} for n in names}, {})
+    assert metrics.semconv_hint(base, reg) == hint

@@ -378,7 +378,10 @@ SEMCONV_FOR = [
      "http.server.active_requests"),
     (re.compile(r"(^|_)db_(client_)?(query|queries|operation)s?(_duration|_latency|_time)?$"),
      "db.client.operation.duration"),
-    (re.compile(r"(^|_)(llm|gen_?ai)_.*token"), "gen_ai.client.token.usage"),
+    (re.compile(r"(^|_)(llm|gen_?ai)_.*(prompt|input)_tokens?(_usage|_count)?$"),
+     "gen_ai.client.inference.usage.input_tokens"),
+    (re.compile(r"(^|_)(llm|gen_?ai)_.*(completion|output)_tokens?(_usage|_count)?$"),
+     "gen_ai.client.inference.usage.output_tokens"),
     (re.compile(r"(^|_)(llm|gen_?ai)_(requests?|calls?|operations?)(_duration|_latency)?$"),
      "gen_ai.client.operation.duration"),
 ]
