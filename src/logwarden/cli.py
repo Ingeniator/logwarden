@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from logwarden import __version__, check, config, data, output, selflog, weaver
@@ -455,6 +456,10 @@ def cmd_setup(_: argparse.Namespace) -> int:
         _info(f"semantic conventions: {model}", "semconv_ready")
         model = weaver.genai_model(weaver.genai_version(manifest))
         _info(f"GenAI semantic conventions: {model}", "semconv_ready")
+        with tempfile.TemporaryDirectory(prefix="logwarden-") as tmp:
+            chain = check.base_chain(Path(tmp))
+            if not chain.is_relative_to(tmp):
+                _info(f"registry for checks: {chain.parent}", "semconv_ready")
     except weaver.WeaverError as e:
         raise UsageError(str(e)) from e
     return 0

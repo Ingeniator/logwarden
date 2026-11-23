@@ -6,6 +6,7 @@ Full release notes, each with a verification table, are in [docs/releases/](docs
 |---|---|---|
 | [v0.12.0](docs/releases/v0.12.0.md) | Planned, conditional | Metrics in the everyday workflow: OTLP and capture, naming, resource and required-metric rules, baseline, merge requests, Action, MCP. Only if v0.11.0 says go |
 | [v0.11.0](docs/releases/v0.11.0.md) | Planned | Experiment: `check --signal metrics` on Prometheus text with cardinality and label rules, tried on five real services for a go/no-go decision |
+| [v0.10.3](docs/releases/v0.10.3.md) | Planned | The semantic conventions + GenAI registry is prepared once in the cache instead of copied on every check (about 0.1 s per check) |
 | [v0.10.2](docs/releases/v0.10.2.md) | Released 2026-11-23 | Bug fixes: list fields pass as `string[]` etc.; `gen_ai.*` fields pass (GenAI semantic conventions bundled); source lines with logging set up in `conftest.py`; `init --from` naming hint follows the standard; timestamp ids no longer reported as card numbers; a baselined secret kind no longer hides another kind in the field (old secret entries must be regenerated); Python 3.10/3.11 unpack the GenAI archive |
 | [v0.10.1](docs/releases/v0.10.1.md) | Released 2026-11-22 | logwarden passes its own standard (JSON messages), faster checks of large files |
 | [v0.10.0](docs/releases/v0.10.0.md) | Released 2026-11-22 | From `essential` to the full standard: `init --from` writes the fields file from real logs; pin updates |

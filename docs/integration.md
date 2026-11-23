@@ -17,7 +17,8 @@ logwarden init --from logs.jsonl   # declare the fields these logs use, set prof
 
 Weaver, which does the actual checking, and the OpenTelemetry semantic conventions are
 downloaded on first run into the user cache directory (`logwarden setup` does it ahead of
-time). After that, checks work offline. Set `WEAVER` to use your own binary. No internet
+time), together with the registry checks run against (semantic conventions plus GenAI,
+prepared once). After that, checks work offline. Set `WEAVER` to use your own binary. No internet
 access in CI? See [Without internet access](#without-internet-access).
 
 **No Python on the machine?** Use the Docker image, which has Weaver and the semantic

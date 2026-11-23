@@ -572,28 +572,82 @@ def load_baseline(path: Path) -> dict:
     return content
 
 
+# Bump when _build_chain changes what it writes, so cached chains from older versions aren't used.
+CHAIN_FORMAT = 1
+
+
 def base_registry(into: Path) -> Path:
-    """logwarden's registry, depending on local copies of the GenAI semantic conventions and the
-    semantic conventions: logwarden -> GenAI -> semconv without the directories GenAI replaces.
+    """logwarden's registry (copied into `into`), depending on the GenAI semantic conventions,
+    which depend on the semantic conventions without the directories GenAI replaces.
 
     Semconv keeps deprecated copies of the fields that moved to GenAI (in gen-ai/, mcp/,
     openai/). With both loaded, Weaver sees each such field twice and uses whichever group comes
     last, so current GenAI fields could be reported as deprecated."""
     src = data.path("registry")
     manifest = src / "manifest.yaml"
-    semconv = weaver.semconv_model(weaver.semconv_version(manifest))
-    genai = weaver.genai_model(weaver.genai_version(manifest))
-    replaced = {p.name for p in genai.iterdir() if p.is_dir()}
-    sc, ga, own = into / "semconv", into / "genai", into / "logwarden"
-    shutil.copytree(semconv, sc, ignore=lambda d, names: replaced & set(names) if Path(d) == semconv else ())
-    shutil.copytree(genai, ga)
-    _point_at(ga / "manifest.yaml", (ga / "manifest.yaml").read_text(encoding="utf-8"), sc)
+    genai = base_chain(into)
+    own = into / "logwarden"
     own.mkdir(parents=True)
     for f in src.iterdir():
         if f.is_file() and f.name != "manifest.yaml":
             (own / f.name).write_bytes(f.read_bytes())
-    _point_at(own / "manifest.yaml", manifest.read_text(encoding="utf-8"), ga)
+    _point_at(own / "manifest.yaml", manifest.read_text(encoding="utf-8"), genai)
     return own
+
+
+def base_chain(scratch: Path) -> Path:
+    """The GenAI registry directory, its manifest pointing at semconv without the replaced
+    directories. Built once in the cache for the pinned versions; built under `scratch` when
+    LOGWARDEN_SEMCONV(_GENAI) points at a local copy (its content can change) or the cache
+    can't be written."""
+    manifest = data.path("registry") / "manifest.yaml"
+    sv, gv = weaver.semconv_version(manifest), weaver.genai_version(manifest)
+    semconv, genai = weaver.semconv_model(sv), weaver.genai_model(gv)
+    if os.environ.get("LOGWARDEN_SEMCONV") or os.environ.get("LOGWARDEN_SEMCONV_GENAI"):
+        return _build_chain(semconv, genai, scratch / "chain", scratch / "chain")
+    dest = weaver.cache_dir() / f"registry-semconv-{sv}-genai-{gv}-{CHAIN_FORMAT}"
+    if _chain_ok(dest):
+        return dest / "genai"
+    # A name of its own per process, so parallel first runs don't build into the same place.
+    tmp = dest.with_name(f"{dest.name}.tmp-{os.getpid()}")
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        _build_chain(semconv, genai, tmp, dest)
+        if dest.exists():                    # a copied cache: its manifest points elsewhere
+            shutil.rmtree(dest)
+        try:
+            tmp.rename(dest)
+        except OSError:                      # another run renamed its copy first
+            shutil.rmtree(tmp, ignore_errors=True)
+            if not _chain_ok(dest):
+                raise
+    except OSError:                          # read-only or full cache: build it for this run
+        shutil.rmtree(tmp, ignore_errors=True)
+        return _build_chain(semconv, genai, scratch / "chain", scratch / "chain")
+    return dest / "genai"
+
+
+def _chain_ok(dest: Path) -> bool:
+    """A complete cached chain whose GenAI manifest points at its own semconv copy (Weaver
+    resolves a relative registry_path from the working directory, so the path is absolute and
+    a cache copied to another directory has to be rebuilt)."""
+    try:
+        text = (dest / "genai" / "manifest.yaml").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    m = re.search(r"^\s*registry_path:\s*(\S+)", text, re.M)
+    return m is not None and m.group(1) == (dest / "semconv").as_posix()
+
+
+def _build_chain(semconv: Path, genai: Path, into: Path, final: Path) -> Path:
+    """Copy semconv (without GenAI's directories) and GenAI into `into`, GenAI's manifest
+    pointing at `final`/semconv (where the copy will be once `into` is renamed to `final`)."""
+    replaced = {p.name for p in genai.iterdir() if p.is_dir()}
+    sc, ga = into / "semconv", into / "genai"
+    shutil.copytree(semconv, sc, ignore=lambda d, names: replaced & set(names) if Path(d) == semconv else ())
+    shutil.copytree(genai, ga)
+    _point_at(ga / "manifest.yaml", (ga / "manifest.yaml").read_text(encoding="utf-8"), final / "semconv")
+    return ga
 
 
 def _point_at(manifest: Path, text: str, target: Path) -> None:
