@@ -181,6 +181,13 @@ the call sites. When `check` reports baseline entries that no longer occur, run
 rule, field, logger and event name (numbers and ids masked), so code moving around doesn't
 break it. `fail: "false"` in the Action still works for a report-only start.
 
+### Which log calls do the tests run?
+
+Only the log calls your tests reach are checked. `logwarden log-coverage` lists the ones they
+don't, per file and level, from the coverage data of the same test run, and can require that
+error paths are tested (`--levels error,exception,critical --fail-under 80`). See
+[Log coverage](log-coverage.md).
+
 ### Review: compare with the base branch, PR comment, HTML report
 
 A snapshot records what a run found. A later run compared with it reports which findings

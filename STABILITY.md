@@ -12,7 +12,7 @@ prompts, dashboards and other tools depend on them.
 | **Rule ids** | The ids below. A rule may get stricter or find more, but an id never changes meaning. |
 | **Exit codes** | `0` no violations, `1` violations, `2` usage or setup error, for every command. |
 | **CLI** | Command names and options, and what they write (`--json`, `--snapshot`, `--sarif`, `--codequality`, `--metrics`, `--markdown`, `--html`). With `LOGWARDEN_LOG_FORMAT=json`, the fields and `event` names of logwarden's own records (new events may be added). |
-| **`--json` keys** | The keys of the result and of each finding, rule and service entry. |
+| **`--json` keys** | The keys of the result and of each finding, rule and service entry; of `log-coverage --json` (from v0.11.0). |
 | **Config** | `[tool.logwarden]` / `logwarden.toml` keys: `fields`, `baseline`, `disable`, `upstreams`, `events`, `profile`, `[source]` (`format`, `message_field`, `ignore_fields`, `service_field`); the fields file format. |
 | **Baseline and snapshot files** | `format: 1`. A baseline written by an older version keeps working, except where it would hide a leaked secret (see below). |
 | **Profiles** | `essential` stays `adr_sensitive_data`, `adr_non_json_line` and `adr_missing_required`; `standard` is every rule. |

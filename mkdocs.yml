@@ -55,6 +55,7 @@ nav:
       - Stability: stability.md
   - Advanced:
       - Integration guide: integration.md
+      - Log coverage: log-coverage.md
       - Setup recipes:
           - Node (pino): recipes/node.md
           - Go (slog): recipes/go.md
