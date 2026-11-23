@@ -17,7 +17,7 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.6.7</version>
+      <version>1.6.8</version>
     </dependency>
     <dependency>
       <groupId>net.logstash.logback</groupId>
@@ -37,7 +37,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>3.6.2</version>
+        <version>3.7.0</version>
         <configuration>
           <mainClass>example.App</mainClass>
         </configuration>
