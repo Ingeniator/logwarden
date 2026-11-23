@@ -186,6 +186,7 @@ def add_otel_trace_context(_, __, event_dict):
     return event_dict
 ```
 
-Notes: `gen_ai.*` attributes now live in the
-[OTel GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai)
-repository and are still changing. Follow logwarden's `deprecated` findings when they're renamed.
+Notes: `gen_ai.*` attributes live in the
+[OTel GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai),
+which logwarden bundles next to the semantic conventions. They are still changing: when a
+field is renamed, its `deprecated` finding names the field to use instead.

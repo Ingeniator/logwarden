@@ -33,7 +33,7 @@ fix first: the top 5 places cause 86% of the lines with violations
 
   1	deprecated - Deprecated semconv field
 	fix: Rename to the replacement named in the message.
-	e.g. Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).
+	e.g. Attribute 'gen_ai.system' is deprecated; reason = 'renamed', note = 'Replaced by `gen_ai.provider.name`.'.
 
   1	type_mismatch - Field has the wrong type
 	fix: Log the type the registry declares (e.g. http.response.status_code is an int, not a string).
@@ -56,7 +56,7 @@ findings (first 18):
   line 7	adr_missing_required	§3: required field 'service.version' missing
   line 7	adr_event_name	§4: event 'no level here' must be a constant snake_case name
   line 8	type_mismatch	Attribute 'http.response.status_code' has type 'string'. Type should be 'int'.
-  line 8	deprecated	Attribute 'gen_ai.system' is deprecated; reason = 'uncategorized', note = 'Replaced by `gen_ai.provider.name`, which has moved to the [OpenTelemetry GenAI semantic conventions repository](https://github.com/open-telemetry/semantic-conventions-genai).
+  line 8	deprecated	Attribute 'gen_ai.system' is deprecated; reason = 'renamed', note = 'Replaced by `gen_ai.provider.name`.'.
   line 8	adr_banned_synonym	§2: 'env' is a banned synonym; use deployment.environment.name
   line 8	adr_banned_synonym	§2: 'path' is a banned synonym; use url.path or http.route
   line 9	adr_semconv_prefix	§2: 'user_id' uses '_' where semconv uses '.'; probably 'user.id'

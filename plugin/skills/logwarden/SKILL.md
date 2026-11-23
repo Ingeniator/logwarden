@@ -38,8 +38,9 @@ Your job is to make sure the code you write produces logs that pass.
 - To move from `essential` to the full standard, run `logwarden init --from <logs>`: it
   declares the service's own fields in `logwarden-fields.yaml` (names and types only), lists
   the synonyms and sensitive fields to fix in the code instead, and sets `profile = "standard"`.
-  Review the file before committing: describe each field, and namespace bare names
-  (`type` → `billing.type`) in the code rather than declaring them.
+  Review the file before committing: describe each field, and rename fields that are too
+  generic to mean anything on their own (`type` → `billing_type`) in the code rather than
+  declaring them. The standard (§2) names a service's own fields snake_case without dots.
 - `service.name`, `service.version` and `deployment.environment.name` come from the shared
   logging setup, never from call sites. In a Python service without a compliant setup,
   suggest `logwarden.logging.configure(...)` (`logwarden[structlog]`); in one that already

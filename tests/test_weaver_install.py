@@ -155,15 +155,19 @@ def test_unsafe_archive_paths_rejected(name):
             list(weaver._safe_members(t))
 
 
-def test_links_in_archive_rejected():
+def test_links_in_archive_skipped():
+    """v0.10.2: Python < 3.12 skips links instead of failing (the GenAI archive has two)."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as t:
-        link = tarfile.TarInfo("weaver")
-        link.type, link.linkname = tarfile.SYMTYPE, "/etc/passwd"
-        t.addfile(link)
+        for name, kind in (("weaver", tarfile.SYMTYPE), ("hard", tarfile.LNKTYPE)):
+            link = tarfile.TarInfo(name)
+            link.type, link.linkname = kind, "/etc/passwd"
+            t.addfile(link)
+        f = tarfile.TarInfo("ok.txt")
+        f.size = 1
+        t.addfile(f, io.BytesIO(b"x"))
     with tarfile.open(fileobj=io.BytesIO(buf.getvalue()), mode="r") as t:
-        with pytest.raises(weaver.WeaverError, match="unsafe path"):
-            list(weaver._safe_members(t))
+        assert [m.name for m in weaver._safe_members(t)] == ["ok.txt"]
 
 
 def _semconv(monkeypatch, tmp_path, version, files):

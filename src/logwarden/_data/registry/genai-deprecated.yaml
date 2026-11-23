@@ -1,0 +1,92 @@
+# GenAI field names that semantic conventions 1.45.0 deprecated when the GenAI conventions moved
+# to their own repository, and that GenAI v0.1.0 no longer has. logwarden leaves semconv's
+# deprecated gen-ai/, mcp/ and openai/ directories out (check.base_registry), so without this file
+# these names would be reported as unknown. Declared here as deprecated, with the new name when
+# there is one, so the finding says what to log instead. Sources: semconv 1.45.0 deprecation
+# notes ("Replaced by ...") and the GenAI v0.1.0 changelog. tests/test_genai.py checks every
+# old name is absent from GenAI and every new name is in it.
+groups:
+  - id: registry.logwarden.genai_deprecated
+    type: attribute_group
+    display_name: Deprecated GenAI fields
+    brief: GenAI field names replaced in the OpenTelemetry GenAI semantic conventions.
+    attributes:
+      - id: gen_ai.system
+        type: string
+        stability: development
+        brief: Replaced by gen_ai.provider.name.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.provider.name
+      - id: gen_ai.usage.prompt_tokens
+        type: int
+        stability: development
+        brief: Replaced by gen_ai.usage.input_tokens.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.usage.input_tokens
+      - id: gen_ai.usage.completion_tokens
+        type: int
+        stability: development
+        brief: Replaced by gen_ai.usage.output_tokens.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.usage.output_tokens
+      - id: gen_ai.usage.cache_creation.input_tokens
+        type: int
+        stability: development
+        brief: Replaced by gen_ai.usage.cache_write.input_tokens.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.usage.cache_write.input_tokens
+      - id: gen_ai.workflow.name
+        type: string
+        stability: development
+        brief: Replaced by gen_ai.agent.name.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.agent.name
+      - id: gen_ai.openai.request.seed
+        type: int
+        stability: development
+        brief: Replaced by gen_ai.request.seed.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.request.seed
+      - id: gen_ai.openai.request.response_format
+        type: string
+        stability: development
+        brief: Replaced by gen_ai.output.type.
+        deprecated:
+          reason: renamed
+          renamed_to: gen_ai.output.type
+      - id: gen_ai.openai.request.service_tier
+        type: string
+        stability: development
+        brief: Replaced by openai.request.service_tier.
+        deprecated:
+          reason: renamed
+          renamed_to: openai.request.service_tier
+      - id: gen_ai.openai.response.service_tier
+        type: string
+        stability: development
+        brief: Replaced by openai.response.service_tier.
+        deprecated:
+          reason: renamed
+          renamed_to: openai.response.service_tier
+      - id: gen_ai.openai.response.system_fingerprint
+        type: string
+        stability: development
+        brief: Replaced by openai.response.system_fingerprint.
+        deprecated:
+          reason: renamed
+          renamed_to: openai.response.system_fingerprint
+      - id: gen_ai.token.type
+        type: string
+        stability: development
+        brief: Removed; token counts are separate histograms in the GenAI conventions.
+        deprecated:
+          reason: obsoleted
+          note: >
+            Removed in the GenAI semantic conventions v0.1.0: input and output token counts are
+            the gen_ai.client.inference.operation.input_tokens and output_tokens histograms.

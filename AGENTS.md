@@ -15,7 +15,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 |---|---|
 | `src/logwarden/cli.py` | CLI: `check`, `baseline`, `capture`, `catalog`, `fetch`, `lint-code`, `rules`, `init`, `setup`, `mcp`, `version`. Exit codes 0 / 1 / 2 |
 | `src/logwarden/check.py` | Line parsing, Weaver sample conversion, running Weaver, rules that need the raw line (`adr_non_json_line`), profiles (`PROFILES`), `disable` and baseline, "Fix first" (`fix_first`), the result dict |
-| `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv release archive (pinned SHA-256 in `SEMCONV_SHA256`) |
+| `src/logwarden/weaver.py` | Finds Weaver, or downloads the pinned release and checks its SHA-256; downloads and caches the semconv and GenAI semconv release archives (pinned SHA-256 in `SEMCONV_SHA256`, `GENAI_SHA256`) |
 | `src/logwarden/report.py` | Markdown summary (PR comment, under GitHub's size limit), the self-contained HTML report, Prometheus metrics (`--metrics`) |
 | `src/logwarden/sources.py` | Input formats (JSON lines, Elasticsearch `_search`, Kibana CSV with registry types) and `[source]` unwrapping (Fluent Bit `log`, `ignore_fields`), service of each record |
 | `src/logwarden/sarif.py` | SARIF 2.1.0 for `check --sarif` (location from `code.file.path`/`code.line.number`) and `lint-code --sarif`; schema in `tests/data/` |
@@ -24,14 +24,14 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/fetch.py` | `logwarden fetch` (newest lines of a window from Elasticsearch; credentials only from the environment) and the Pushgateway push (`check --pushgateway`) |
 | `integrations/grafana/logwarden.json` | Grafana dashboard for the pushed metrics (scheduled checks) |
 | `src/logwarden/fields.py` | `init --from`: proposes the fields file from a `standard` run (`check.declarable`, `check.NOT_DECLARED`), appends without a YAML library, sets `profile` |
-| `scripts/update_pins.py`, `.github/workflows/update-pins.yml` | Weekly pin update: new Weaver and semconv versions with the archive SHA-256, tests, a PR |
+| `scripts/update_pins.py`, `.github/workflows/update-pins.yml` | Weekly pin update: new Weaver, semconv and GenAI semconv versions with the archive SHA-256, tests, a PR |
 | `src/logwarden/catalog.py` | Event catalog: events of a run, reading and merging `logwarden-events.toml` |
 | `src/logwarden/capture.py` | OTLP/HTTP receiver (`logwarden capture`): hand-written protobuf and JSON decoding, record → JSON line |
 | `src/logwarden/lint.py`, `src/logwarden/_data/semgrep/logwarden.yml` | `logwarden lint-code`: runs the Semgrep rules (one per language for each check); fixtures in `tests/semgrep/` |
 | `src/logwarden/config.py` | `[tool.logwarden]` in `pyproject.toml`, or `logwarden.toml` (`fields`, `baseline`, `disable`, `upstreams`, `events`, `[source]`) |
 | `src/logwarden/_data/policies/logwarden.rego` | Rules that run per log line (Rego, package `live_check_advice`) |
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
-| `src/logwarden/_data/registry/` | Weaver registry: semconv dependency + shared domain fields |
+| `src/logwarden/_data/registry/` | Weaver registry: the GenAI semconv dependency (which brings semconv) + shared domain fields + old GenAI names as deprecated (`genai-deprecated.yaml`). `check.base_registry` builds logwarden → GenAI → semconv without the directories GenAI replaces, so each field has one definition (`tests/test_genai.py`) |
 | `src/logwarden/logging.py` | `configure()` (the reference structlog setup) and the failure helpers; `[structlog]` extra |
 | `src/logwarden/patterns.py` | Sensitive-data patterns in Python (redaction, `scrub`); mirror of `adr_sensitive_data` |
 | `src/logwarden/testing.py` | `capture`, `assert_failure_logged`, `assert_logs_clean` |

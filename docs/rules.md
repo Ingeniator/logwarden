@@ -121,7 +121,10 @@ A field holds a secret or personal data (§8). Two checks:
 - **Value:** any field whose value contains a JWT, a `Bearer` token, an API key in a known
   format (`sk-…`, `ghp_…`, `github_pat_…`, `glpat-…`, `AKIA…`, `xox?-…`, `AIza…`), a
   private-key block, credentials in a URL (`scheme://user:pass@`), an email address, or a
-  card number that passes the Luhn checksum.
+  card number: a card issuer's prefix and length (Visa, Mastercard, American Express,
+  Diners Club, Discover, JCB, UnionPay, Maestro), written without separators or in card
+  groups (`4111 1111 1111 1111`, `3782 822463 10005`), and passing the Luhn checksum. Ids and
+  timestamps such as `20260911-120000` aren't card numbers.
 
 The message names the field and the kind of data, never the value, so the finding is safe
 to print.
@@ -217,7 +220,12 @@ Not rules, but they change what fails:
   `.logwarden-baseline.json`. With `baseline = ".logwarden-baseline.json"` in the config,
   `check` fails only on findings that aren't in it. A finding matches by rule, field,
   logger and event name, with numbers and ids in the event masked; non-JSON lines match by
-  a hash. The result reports `baselined` (hidden as known) and `baseline_fixed` (entries
-  that no longer occur; re-run `logwarden baseline` to shrink the file).
+  a hash. An `adr_sensitive_data` entry also records what was found (`kind`: `key`,
+  `nested`, `jwt`, `bearer_token`, `api_key`, `private_key`, `url_credentials`, `email`,
+  `card_number`), so a known card number in a field doesn't hide a JWT in the same field.
+  The result reports `baselined` (hidden as known), `baseline_fixed` (entries that no longer
+  occur; re-run `logwarden baseline` to shrink the file) and `baseline_outdated`
+  (`adr_sensitive_data` entries without a `kind`, written before v0.10.2: they hide
+  nothing until the baseline is regenerated).
 - **Disabled rules:** `disable = { rule_id = "reason" }`. A reason is required. Disabled
   rules and their reasons are listed in every result under `disabled`.

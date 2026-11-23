@@ -4,11 +4,13 @@ The result dict is a public interface (`--json`, MCP, CI): only add keys.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -30,6 +32,7 @@ PROFILES: dict[str, frozenset[str] | None] = {
 FIX_FIRST = 10
 UPSTREAM = "adr_upstream_failure_coverage"
 EVENT_CATALOG = "adr_event_catalog"
+SENSITIVE = "adr_sensitive_data"
 _SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 BASELINE_FORMAT = 1
 
@@ -108,7 +111,7 @@ def parse_lines(text: str) -> tuple[list[Record], int]:
     return records, total
 
 
-def _weaver_type(v: Any) -> str:
+def _scalar_type(v: Any) -> str:
     if isinstance(v, bool):
         return "boolean"
     if isinstance(v, (int, float)):
@@ -118,7 +121,27 @@ def _weaver_type(v: Any) -> str:
     return "string"
 
 
+def _array_type(v: list) -> str | None:
+    """string[], int[], double[] or boolean[] for a list whose items are all one type
+    (ints and doubles together are double[]); None for an empty or mixed list, or one with
+    nulls, lists or objects in it."""
+    if not v or any(x is None or isinstance(x, (dict, list)) for x in v):
+        return None
+    kinds = {_scalar_type(x) for x in v}
+    if kinds == {"int", "double"}:
+        return "double[]"
+    return f"{kinds.pop()}[]" if len(kinds) == 1 else None
+
+
+def _weaver_type(v: Any) -> str:
+    if isinstance(v, list):
+        return _array_type(v) or "string"
+    return _scalar_type(v)
+
+
 def _weaver_value(v: Any) -> Any:
+    if isinstance(v, list) and _array_type(v):
+        return v
     if isinstance(v, (dict, list)):
         return json.dumps(v, separators=(",", ":"), ensure_ascii=False)
     if v is None:
@@ -137,8 +160,16 @@ def _text(v: Any) -> Any:
     return json.dumps(v, separators=(",", ":"), ensure_ascii=False)
 
 
-def to_sample(obj: dict) -> dict:
-    """One structlog-style JSON record -> Weaver live-check log sample."""
+def _attribute(name: str, v: Any, declared: dict[str, str]) -> dict:
+    """An empty list has no item type to go by: it gets the field's declared array type, if any."""
+    if v == [] and declared.get(name, "").endswith("[]"):
+        return {"name": name, "type": declared[name], "value": []}
+    return {"name": name, "type": _weaver_type(v), "value": _weaver_value(v)}
+
+
+def to_sample(obj: dict, declared: dict[str, str] | None = None) -> dict:
+    """One structlog-style JSON record -> Weaver live-check log sample. `declared`: field name ->
+    registry type, used only for empty lists."""
     level = obj.get("level")
     level_s = "" if _falsy(level) else str(level)
     event = _text(obj.get("event"))
@@ -151,10 +182,7 @@ def to_sample(obj: dict) -> dict:
         "severity_text": level_s.upper(),
         "trace_id": None if _falsy(obj.get("trace_id")) else _text(obj["trace_id"]),
         "span_id": None if _falsy(obj.get("span_id")) else _text(obj["span_id"]),
-        "attributes": [
-            {"name": k, "type": _weaver_type(v), "value": _weaver_value(v)}
-            for k, v in obj.items() if k not in _RECORD_KEYS
-        ],
+        "attributes": [_attribute(k, v, declared or {}) for k, v in obj.items() if k not in _RECORD_KEYS],
     }}
 
 
@@ -207,8 +235,12 @@ def _str(v: Any) -> str:
     return v if isinstance(v, str) else json.dumps(v, separators=(",", ":"), ensure_ascii=False)
 
 
-def fingerprint(f: dict) -> tuple[str, str, str, str]:
-    return (f["rule"], f["field"] or "", f["logger"], f["fp_event"])
+def fingerprint(f: dict) -> tuple[str, str, str, str, str]:
+    return (f["rule"], f["field"] or "", f["logger"], f["fp_event"], f.get("kind") or "")
+
+
+def _entry_key(e: dict) -> tuple[str, str, str, str, str]:
+    return (e["rule"], e["field"], e["logger"], e["event"], e.get("kind") or "")
 
 
 def a_id(a: dict) -> str | None:
@@ -285,6 +317,7 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
         for node in (log["advice"] if "advice" in log else _walk(log)):   # live_check() gives "advice"
             if isinstance(node, dict) and "all_advice" in node:
                 for a in node["all_advice"] or []:
+                    ctx = a.get("context") or {}
                     # Weaver 0.28 emits {id, level}; older builds used advice_type/advice_level.
                     found.append({
                         "rule": a_id(a),
@@ -297,6 +330,9 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
                         "event": log.get("body"),
                         "logger": logger,
                         "fp_event": mask(_str(log.get("body"))),
+                        # What a secret finding detected (key, nested, jwt, card_number, ...): one
+                        # kind on a field in the baseline mustn't hide another kind there.
+                        "kind": ctx.get("match") if a_id(a) == SENSITIVE else None,
                     })
     # A non-string event is sent to Weaver as JSON text, where `true` would pass as a name.
     odd = {r.line: r.obj["event"] for r in records
@@ -350,6 +386,7 @@ class Outcome:
     fixed: int = 0
     outside: int = 0            # violations of rules outside the profile, not counted
     outside_unknown: int = 0    # of those: unknown fields (missing_attribute), which init --from declares
+    outdated: int = 0           # baseline entries for secrets without a kind (before v0.10.2): never match
 
 
 def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
@@ -369,16 +406,20 @@ def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
     outside_unknown = sum(1 for v in all_enabled if v["rule"] == "missing_attribute"
                           and policy.outside(v["rule"]) and v["field"] in names)
 
-    baselined = fixed = 0
+    baselined = fixed = outdated = 0
     if policy.baseline is not None:
-        known = {(e["rule"], e["field"], e["logger"], e["event"]) for e in policy.baseline["entries"]
-                 if not policy.off(e["rule"])}
+        entries = [e for e in policy.baseline["entries"] if not policy.off(e["rule"])]
+        # A secret entry from before v0.10.2 covers a field whatever was found in it, so it
+        # would hide a new secret of another kind there: it matches nothing until regenerated.
+        old = [e for e in entries if e["rule"] == SENSITIVE and not e.get("kind")]
+        outdated = len(old)
+        known = {_entry_key(e) for e in entries if e not in old}
         seen = {fingerprint(v) for v in violations}
         new = [v for v in violations if fingerprint(v) not in known]
         baselined = len(violations) - len(new)
         fixed = len(known - seen)
         violations = new
-    return Outcome(kept, violations, off, baselined, fixed, outside, outside_unknown)
+    return Outcome(kept, violations, off, baselined, fixed, outside, outside_unknown, outdated)
 
 
 def fix_first(violations: list[dict], limit: int = FIX_FIRST) -> list[dict]:
@@ -487,6 +528,7 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         "baseline": policy.baseline_path,
         "baselined": baselined,
         "baseline_fixed": fixed,
+        "baseline_outdated": o.outdated,
         "disabled": [{"rule": r, "reason": policy.disabled[r], "count": off[r]} for r in sorted(off)],
         "services": by_service(violations, lines or {}),
         "profile": policy.profile,
@@ -512,7 +554,8 @@ def make_baseline(found: list[dict], policy: Policy | None = None) -> dict:
         "version": __version__,
         "about": "Known findings that `logwarden check` doesn't fail on. Regenerate with "
                  "`logwarden baseline`; new findings still fail.",
-        "entries": [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}
+        "entries": [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3],
+                     **({"kind": k[4]} if k[4] else {}), "count": n}
                     for k, n in sorted(counts.items())],
     }
 
@@ -530,18 +573,36 @@ def load_baseline(path: Path) -> dict:
 
 
 def base_registry(into: Path) -> Path:
-    """logwarden's registry with the semconv dependency pointing at a local cached copy."""
+    """logwarden's registry, depending on local copies of the GenAI semantic conventions and the
+    semantic conventions: logwarden -> GenAI -> semconv without the directories GenAI replaces.
+
+    Semconv keeps deprecated copies of the fields that moved to GenAI (in gen-ai/, mcp/,
+    openai/). With both loaded, Weaver sees each such field twice and uses whichever group comes
+    last, so current GenAI fields could be reported as deprecated."""
     src = data.path("registry")
     manifest = src / "manifest.yaml"
-    model = weaver.semconv_model(weaver.semconv_version(manifest))
-    into.mkdir(parents=True, exist_ok=True)
+    semconv = weaver.semconv_model(weaver.semconv_version(manifest))
+    genai = weaver.genai_model(weaver.genai_version(manifest))
+    replaced = {p.name for p in genai.iterdir() if p.is_dir()}
+    sc, ga, own = into / "semconv", into / "genai", into / "logwarden"
+    shutil.copytree(semconv, sc, ignore=lambda d, names: replaced & set(names) if Path(d) == semconv else ())
+    shutil.copytree(genai, ga)
+    _point_at(ga / "manifest.yaml", (ga / "manifest.yaml").read_text(encoding="utf-8"), sc)
+    own.mkdir(parents=True)
     for f in src.iterdir():
         if f.is_file() and f.name != "manifest.yaml":
-            (into / f.name).write_bytes(f.read_bytes())
-    text = re.sub(r"(registry_path:\s*)\S+", lambda m: m.group(1) + model.as_posix(),
-                  manifest.read_text(encoding="utf-8"), count=1)
-    (into / "manifest.yaml").write_text(text, encoding="utf-8")
-    return into
+            (own / f.name).write_bytes(f.read_bytes())
+    _point_at(own / "manifest.yaml", manifest.read_text(encoding="utf-8"), ga)
+    return own
+
+
+def _point_at(manifest: Path, text: str, target: Path) -> None:
+    """Write a manifest whose (only) dependency is the local registry at target."""
+    text, n = re.subn(r"^(\s*registry_path:\s*)\S+", lambda m: m.group(1) + target.as_posix(), text,
+                      count=1, flags=re.M)
+    if n != 1:
+        raise CheckError(f"no registry_path in {manifest.name}")
+    manifest.write_text(text, encoding="utf-8")
 
 
 def _fields_registry(fields: Path, into: Path, base: Path) -> Path:
@@ -570,7 +631,8 @@ def evaluate(text: str, *, fields: Path | None = None, registry: Path | None = N
 
 
 def registry_types(binary: str, registry: Path) -> dict[str, str]:
-    """Attribute name -> int, double, boolean or string, from the resolved registry (for CSV)."""
+    """Attribute name -> registry type (int, double, boolean, string, string[], ...), for CSV values
+    and empty lists."""
     proc = subprocess.run([binary, "registry", "resolve", "-r", str(registry), "--include-unreferenced",
                            "--format", "json", "--skip-policies", "--quiet"],
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -613,10 +675,13 @@ def _evaluate(text: str, *, fields: Path | None, registry: Path | None, out: Pat
                 raise CheckError(str(e)) from e
             registry = _fields_registry(fields, Path(tmp) / "registry", base) if fields else base
         reg = registry
-        inp = read(text, policy.source if policy else None, lambda: registry_types(binary, reg))
+        types = functools.cache(lambda: registry_types(binary, reg))
+        inp = read(text, policy.source if policy else None, types)
         records, bad = inp.records, inp.bad
-        reports = live_check(binary, registry, [to_sample(r.obj) for r in records], work, Path(tmp),
-                             keep=out is not None)
+        # An empty list is typed from the registry, which costs one more Weaver call: only then.
+        declared = types() if any(v == [] for r in records for v in r.obj.values()) else {}
+        reports = live_check(binary, registry, [to_sample(r.obj, declared) for r in records], work,
+                             Path(tmp), keep=out is not None)
         found = collect({"samples": reports}, records, bad, upstreams,
                         events=policy.events if policy else None,
                         events_path=policy.events_path if policy else None,
@@ -825,12 +890,12 @@ def compare_with(found: list[dict], policy: Policy, events: dict, base: dict,
     first: dict[tuple, dict] = {}
     for v in violations_of([f for f in found if not policy.off(f["rule"])]):
         first.setdefault(fingerprint(v), v)
-    known = {(e["rule"], e["field"] or "", e["logger"], e["event"]): e.get("count", 1)
+    known = {_entry_key({**e, "field": e["field"] or ""}): e.get("count", 1)
              for e in base["entries"] if not policy.off(e["rule"])}
     new = sorted((v for k, v in first.items() if k not in known),
                  key=lambda f: (f["line"] is None, f["line"] or 0))
-    fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}
-             for k, n in sorted(known.items()) if k not in first]
+    fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], **({"kind": k[4]} if k[4] else {}),
+              "count": n} for k, n in sorted(known.items()) if k not in first]
     base_events = base.get("events")
     return {
         "base": base_path,

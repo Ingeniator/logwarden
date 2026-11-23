@@ -184,6 +184,9 @@ def _md_report(result: dict, rows: int) -> str:
     if result.get("baseline_fixed"):
         extra.append(f"Baseline: {result['baseline_fixed']} entries no longer occur; "
                      "run `logwarden baseline` to shrink it")
+    if result.get("baseline_outdated"):
+        extra.append(f"Baseline: {result['baseline_outdated']} `adr_sensitive_data` entries are from before "
+                     "v0.10.2 and no longer hide anything; check those findings, then run `logwarden baseline`")
     if extra:
         out.append("\n" + "<br>\n".join(extra))
     out.append(f"\n<sub>logwarden {_md(result.get('version', __version__))}</sub>")

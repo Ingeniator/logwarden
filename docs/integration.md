@@ -49,8 +49,9 @@ Two things need the network, and they are separate:
      GitHub is reachable, copy `/opt/logwarden` to the machines or runner image, and set
      `LOGWARDEN_CACHE=/opt/logwarden` there. The cache holds the binary for that machine's OS
      and CPU.
-  3. **Your own copies.** Set `WEAVER` to a Weaver binary (v0.28.0) and `LOGWARDEN_SEMCONV` to
-     the `model` directory of semantic-conventions v1.45.0.
+  3. **Your own copies.** Set `WEAVER` to a Weaver binary (v0.28.0), `LOGWARDEN_SEMCONV` to
+     the `model` directory of semantic-conventions v1.45.0, and `LOGWARDEN_SEMCONV_GENAI` to the
+     `model` directory of semantic-conventions-genai v0.1.0.
 
 ## Node, Go, Java: setup recipes
 
@@ -359,6 +360,11 @@ also sets `profile = "standard"`. Under `essential`, the summary says how many o
 findings `standard` would add are such unknown fields
 (`outside_profile_unknown_fields` in `--json`). Fields that several services share go into logwarden's
 shared registry instead, through a PR to this repo.
+
+A field logged as a list is checked as a list: declare it as `string[]`, `int[]`, `double[]` or
+`boolean[]`. A list whose items are all of one type has that array type (ints and doubles
+together are `double[]`); an empty list takes the declared array type. A list with mixed items,
+nulls, lists or objects is checked as JSON text, so declare such a field as `string`.
 
 The order of precedence is `--fields`, then `$LOGWARDEN_FIELDS`, then the config, then
 `./logwarden-fields.yaml`. Unknown config keys produce a warning.
