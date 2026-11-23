@@ -115,14 +115,19 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
   synonyms or sensitive-looking fields; the summary shows how big the move to `standard` is.
 - Weekly workflow that opens a PR for new Weaver and semconv pins.
 
-### M9 (v0.11.0): does checking metrics pay off?
+### M9 (v0.11.0): which log calls do the tests run?
+- Outcome: `logwarden log-coverage` shows, per file and level, the log calls that no test runs
+  (from coverage.py data) or that never wrote a line (from captured logs), with an opt-in CI
+  gate such as "every error path is tested". Python first.
+
+### M10 (v0.12.0): does checking metrics pay off?
 - Outcome: a go/no-go decision. An experimental `check --signal metrics` on saved Prometheus
   text: Weaver's findings with hints, the label rules shared with logs, and cardinality
   (unbounded labels, series budget), one finding per metric and label.
 - Trial on the `/metrics` output of five real services, compared with `promtool` and Weaver
-  alone, with a written decision rule (see the [v0.11.0 notes](releases/v0.11.0.md)).
+  alone, with a written decision rule (see the [v0.12.0 notes](releases/v0.12.0.md)).
 
-### M10 (v0.12.0, only if M9 says go): metrics in the everyday workflow
+### M11 (v0.13.0, only if M10 says go): metrics in the everyday workflow
 - Outcome: metrics checked with one option in the same CI, merge request and reports as logs.
 - [Metrics standard](metrics-standard.md) rules for names, resources and required metrics;
   OTLP input and `capture /v1/metrics`; domain metrics; baseline, compare, SARIF, Code Quality,

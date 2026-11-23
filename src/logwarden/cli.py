@@ -347,6 +347,22 @@ def cmd_lint_code(a: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_log_coverage(a: argparse.Namespace) -> int:
+    from logwarden import logcoverage as lc
+    levels = [x.strip() for x in a.levels.split(",") if x.strip()] if a.levels else None
+    try:
+        result = lc.measure(a.paths, coverage=Path(a.coverage) if a.coverage else None,
+                            logs=Path(a.logs) if a.logs else None, levels=levels,
+                            receiver=a.receiver or lc.RECEIVER, excludes=a.exclude,
+                            fail_under=a.fail_under)
+    except lc.LogCoverageError as e:
+        raise UsageError(f"log-coverage: {e}") from e
+    if a.markdown:
+        _write(Path(a.markdown), lc.markdown(result, a.max))
+    print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else lc.text(result, a.max))
+    return 0 if result["ok"] else 1
+
+
 def cmd_baseline(a: argparse.Namespace) -> int:
     cwd = Path.cwd()
     text = _read_input(a.input)
@@ -647,6 +663,28 @@ def parser() -> argparse.ArgumentParser:
     lc.add_argument("--codequality", metavar="FILE",
                     help="also write the findings as a GitLab Code Quality report")
     lc.set_defaults(fn=cmd_lint_code)
+
+    cov = sub.add_parser("log-coverage", help="which log calls the tests run (Python source + coverage data)",
+                         description="Find the log calls in Python source and report which ones the tests "
+                                     "ran (--coverage) or that wrote a line (--logs), per file and level.")
+    cov.add_argument("paths", nargs="*", help="source files or directories (default: .)")
+    cov.add_argument("--coverage", metavar="FILE",
+                     help="coverage.py data: .coverage, `coverage json` or Cobertura XML (`coverage xml`)")
+    cov.add_argument("--logs", metavar="FILE",
+                     help="lines captured from the tests (JSON lines with code.file.path, code.line.number)")
+    cov.add_argument("--levels", metavar="L1,L2",
+                     help="count only these levels (debug, info, warning, error, exception, critical)")
+    cov.add_argument("--fail-under", type=float, metavar="PCT",
+                     help="exit 1 when fewer than PCT%% of the counted calls are reached (or wrote a line, with --logs)")
+    cov.add_argument("--receiver", metavar="REGEX",
+                     help="what a logger looks like in a call `<receiver>.info(...)` (default: log, logger, "
+                          "logging, structlog or slog as a word)")
+    cov.add_argument("--exclude", action="append", default=[], metavar="GLOB",
+                     help="skip matching files (repeatable); tests/, .venv/ and the like are always skipped")
+    cov.add_argument("--json", action="store_true", help="machine-readable result")
+    cov.add_argument("--markdown", metavar="FILE", help="also write a Markdown summary (job summary, PR comment)")
+    cov.add_argument("--max", type=int, default=50, help="calls listed in text and Markdown output (default 50)")
+    cov.set_defaults(fn=cmd_log_coverage)
 
     r = sub.add_parser("rules", help="list rules, or explain one")
     r.add_argument("rule_id", nargs="?")
