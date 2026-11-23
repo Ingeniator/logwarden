@@ -10,9 +10,9 @@ If your runners can pull from `ghcr.io`, skip this step. Otherwise mirror the im
 registry (on a machine that can reach both):
 
 ```bash
-docker pull ghcr.io/ingeniator/logwarden:0.10.1
-docker tag ghcr.io/ingeniator/logwarden:0.10.1 registry.example.com/mirror/logwarden:0.10.1
-docker push registry.example.com/mirror/logwarden:0.10.1
+docker pull ghcr.io/ingeniator/logwarden:0.10.2
+docker tag ghcr.io/ingeniator/logwarden:0.10.2 registry.example.com/mirror/logwarden:0.10.2
+docker push registry.example.com/mirror/logwarden:0.10.2
 ```
 
 Runners without internet access also need GitLab's own helper image in a registry they can
@@ -25,7 +25,7 @@ Save the template in your repository as `ci/logwarden.gitlab-ci.yml`:
 ```bash
 mkdir -p ci
 curl -fsSL -o ci/logwarden.gitlab-ci.yml \
-  https://raw.githubusercontent.com/Ingeniator/logwarden/v0.10.1/ci/gitlab/logwarden.gitlab-ci.yml
+  https://raw.githubusercontent.com/Ingeniator/logwarden/v0.10.2/ci/gitlab/logwarden.gitlab-ci.yml
 ```
 
 And start with the `essential` rules: no secrets or personal data, every line is JSON, and the
@@ -78,7 +78,7 @@ logwarden:
   extends: .logwarden
   needs: [{job: test, artifacts: true}]
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.1   # your copy from step 1; delete the line to use ghcr.io
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.2   # your copy from step 1; delete the line to use ghcr.io
     LOGWARDEN_LOGS: logs.jsonl
 ```
 
@@ -106,7 +106,7 @@ logwarden-production:
   extends: .logwarden-production
   rules: [{if: '$CI_PIPELINE_SOURCE == "schedule"'}]
   variables:
-    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.1
+    LOGWARDEN_IMAGE: registry.example.com/mirror/logwarden:0.10.2
     LOGWARDEN_ES_URL: https://elasticsearch.example.com:9200
     LOGWARDEN_ES_INDEX: "logs-shop-*"
     LOGWARDEN_ARGS: "--message-field log"           # if the JSON line is in a `log` field
