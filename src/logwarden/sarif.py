@@ -107,7 +107,8 @@ def identity(v: dict, log_uri: str | None, source_root: str | None) -> tuple:
     """What makes a finding the same finding across commits: no line numbers, so it follows moved code."""
     path, _, func = locate(v, log_uri, source_root)
     where = (path, func) if v.get("loc") else (path, None)
-    return (v["rule"], v.get("field"), v.get("logger"), v.get("fp_event"), *where)
+    kind = (v["kind"],) if v.get("kind") else ()   # secret findings: what was found
+    return (v["rule"], v.get("field"), v.get("logger"), v.get("fp_event"), *where, *kind)
 
 
 def from_check(violations: list[dict], log_path: str | None = None, source_root: str | None = None) -> dict:

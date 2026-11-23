@@ -32,6 +32,7 @@ PROFILES: dict[str, frozenset[str] | None] = {
 FIX_FIRST = 10
 UPSTREAM = "adr_upstream_failure_coverage"
 EVENT_CATALOG = "adr_event_catalog"
+SENSITIVE = "adr_sensitive_data"
 _SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 BASELINE_FORMAT = 1
 
@@ -234,8 +235,12 @@ def _str(v: Any) -> str:
     return v if isinstance(v, str) else json.dumps(v, separators=(",", ":"), ensure_ascii=False)
 
 
-def fingerprint(f: dict) -> tuple[str, str, str, str]:
-    return (f["rule"], f["field"] or "", f["logger"], f["fp_event"])
+def fingerprint(f: dict) -> tuple[str, str, str, str, str]:
+    return (f["rule"], f["field"] or "", f["logger"], f["fp_event"], f.get("kind") or "")
+
+
+def _entry_key(e: dict) -> tuple[str, str, str, str, str]:
+    return (e["rule"], e["field"], e["logger"], e["event"], e.get("kind") or "")
 
 
 def a_id(a: dict) -> str | None:
@@ -312,6 +317,7 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
         for node in (log["advice"] if "advice" in log else _walk(log)):   # live_check() gives "advice"
             if isinstance(node, dict) and "all_advice" in node:
                 for a in node["all_advice"] or []:
+                    ctx = a.get("context") or {}
                     # Weaver 0.28 emits {id, level}; older builds used advice_type/advice_level.
                     found.append({
                         "rule": a_id(a),
@@ -324,6 +330,9 @@ def _collect(live_check: dict, records: list[Record], bad: list[BadLine],
                         "event": log.get("body"),
                         "logger": logger,
                         "fp_event": mask(_str(log.get("body"))),
+                        # What a secret finding detected (key, nested, jwt, card_number, ...): one
+                        # kind on a field in the baseline mustn't hide another kind there.
+                        "kind": ctx.get("match") if a_id(a) == SENSITIVE else None,
                     })
     # A non-string event is sent to Weaver as JSON text, where `true` would pass as a name.
     odd = {r.line: r.obj["event"] for r in records
@@ -377,6 +386,7 @@ class Outcome:
     fixed: int = 0
     outside: int = 0            # violations of rules outside the profile, not counted
     outside_unknown: int = 0    # of those: unknown fields (missing_attribute), which init --from declares
+    outdated: int = 0           # baseline entries for secrets without a kind (before v0.10.2): never match
 
 
 def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
@@ -396,16 +406,20 @@ def apply_policy(found: list[dict], policy: Policy | None = None) -> Outcome:
     outside_unknown = sum(1 for v in all_enabled if v["rule"] == "missing_attribute"
                           and policy.outside(v["rule"]) and v["field"] in names)
 
-    baselined = fixed = 0
+    baselined = fixed = outdated = 0
     if policy.baseline is not None:
-        known = {(e["rule"], e["field"], e["logger"], e["event"]) for e in policy.baseline["entries"]
-                 if not policy.off(e["rule"])}
+        entries = [e for e in policy.baseline["entries"] if not policy.off(e["rule"])]
+        # A secret entry from before v0.10.2 covers a field whatever was found in it, so it
+        # would hide a new secret of another kind there: it matches nothing until regenerated.
+        old = [e for e in entries if e["rule"] == SENSITIVE and not e.get("kind")]
+        outdated = len(old)
+        known = {_entry_key(e) for e in entries if e not in old}
         seen = {fingerprint(v) for v in violations}
         new = [v for v in violations if fingerprint(v) not in known]
         baselined = len(violations) - len(new)
         fixed = len(known - seen)
         violations = new
-    return Outcome(kept, violations, off, baselined, fixed, outside, outside_unknown)
+    return Outcome(kept, violations, off, baselined, fixed, outside, outside_unknown, outdated)
 
 
 def fix_first(violations: list[dict], limit: int = FIX_FIRST) -> list[dict]:
@@ -514,6 +528,7 @@ def summarise(found: list[dict], n_records: int, total_lines: int, policy: Polic
         "baseline": policy.baseline_path,
         "baselined": baselined,
         "baseline_fixed": fixed,
+        "baseline_outdated": o.outdated,
         "disabled": [{"rule": r, "reason": policy.disabled[r], "count": off[r]} for r in sorted(off)],
         "services": by_service(violations, lines or {}),
         "profile": policy.profile,
@@ -539,7 +554,8 @@ def make_baseline(found: list[dict], policy: Policy | None = None) -> dict:
         "version": __version__,
         "about": "Known findings that `logwarden check` doesn't fail on. Regenerate with "
                  "`logwarden baseline`; new findings still fail.",
-        "entries": [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}
+        "entries": [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3],
+                     **({"kind": k[4]} if k[4] else {}), "count": n}
                     for k, n in sorted(counts.items())],
     }
 
@@ -874,12 +890,12 @@ def compare_with(found: list[dict], policy: Policy, events: dict, base: dict,
     first: dict[tuple, dict] = {}
     for v in violations_of([f for f in found if not policy.off(f["rule"])]):
         first.setdefault(fingerprint(v), v)
-    known = {(e["rule"], e["field"] or "", e["logger"], e["event"]): e.get("count", 1)
+    known = {_entry_key({**e, "field": e["field"] or ""}): e.get("count", 1)
              for e in base["entries"] if not policy.off(e["rule"])}
     new = sorted((v for k, v in first.items() if k not in known),
                  key=lambda f: (f["line"] is None, f["line"] or 0))
-    fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], "count": n}
-             for k, n in sorted(known.items()) if k not in first]
+    fixed = [{"rule": k[0], "field": k[1], "logger": k[2], "event": k[3], **({"kind": k[4]} if k[4] else {}),
+              "count": n} for k, n in sorted(known.items()) if k not in first]
     base_events = base.get("events")
     return {
         "base": base_path,

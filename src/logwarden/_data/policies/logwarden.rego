@@ -180,7 +180,7 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 	msg := sprintf("§8: '%s' holds a secret or credential; don't log it (log an id or a redacted value)", [name])
 }
 
-deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
+deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name, "match": "nested"}, msg) if {
 	name := input.sample.attribute.name
 	not sensitive_name(name)
 	v := input.sample.attribute.value
@@ -191,7 +191,7 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 	msg := sprintf("§8: '%s' contains a nested secret or credential field; don't log it", [name])
 }
 
-deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
+deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name, "match": secret_ids[kind]}, msg) if {
 	name := input.sample.attribute.name
 	t := value_text(input.sample.attribute.value)
 	low := lower(t)
@@ -202,17 +202,46 @@ deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": n
 	msg := sprintf("§8: '%s' looks like it contains %s; don't log it", [name, kind])
 }
 
-deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name}, msg) if {
+deny contains make_advice("adr_sensitive_data", "violation", {"attribute_key": name, "match": "card_number"}, msg) if {
 	name := input.sample.attribute.name
 	t := value_text(input.sample.attribute.value)
 	count(t) >= 13
 	digit_count(t) >= 13
 	digit_run(t)
 	some candidate in regex.find_n(`\b[2-6](?:[ -]?\d){12,18}\b`, t, -1)
+	card_grouping(candidate)
 	digits := regex.replace(candidate, `[ -]`, "")
+	card_prefix_length(digits)
 	luhn_valid(digits)
 	msg := sprintf("§8: '%s' looks like it contains a card number; don't log it", [name])
 }
+
+# What a finding detected, in its context as "match" (with "key" and "nested" above), so a
+# baseline entry for one kind on a field doesn't hide another kind on the same field.
+secret_ids := {
+	"a JWT": "jwt",
+	"a Bearer token": "bearer_token",
+	"an API key": "api_key",
+	"a private key": "private_key",
+	"credentials in a URL": "url_credentials",
+	"an email address": "email",
+}
+
+# Card numbers are written without separators or in groups of 4 (4-4-4-4, 4-4-4-4-3) or, for
+# 15 and 14 digits, 4-6-5 and 4-6-4. Ids and timestamps with dashes elsewhere aren't cards:
+# 20260911-120000, 20261122-155637-0042.
+card_grouping(c) if {
+	not regex.match(`[ -]`, c)
+}
+
+card_grouping(c) if regex.match(`^\d{4}([ -]\d{4}){2,3}([ -]\d{1,3})?$`, c)
+
+card_grouping(c) if regex.match(`^\d{4}[ -]\d{6}[ -]\d{4,5}$`, c)
+
+# A card issuer's prefix with that issuer's length: Visa, Mastercard (51-55, 2221-2720),
+# American Express, Diners Club, Discover, JCB, UnionPay, Maestro. A 14-digit timestamp
+# starting 2026 matches none of them.
+card_prefix_length(d) if regex.match(`^(4([0-9]{12}|[0-9]{15}|[0-9]{18})|5[1-5][0-9]{14}|(222[1-9]|22[3-9][0-9]|2[3-6][0-9][0-9]|27[01][0-9]|2720)[0-9]{12}|3[47][0-9]{13}|3(0[0-5]|[689][0-9])[0-9]{11,16}|6(011|5[0-9][0-9]|4[4-9][0-9])[0-9]{12,15}|35(2[89]|[3-8][0-9])[0-9]{12,15}|62[0-9]{14,17}|(5[06-9]|6[0-9])[0-9]{10,17})$`, d)
 
 # 13 digits in a row once spaces and dashes are gone: a card number has them, hex ids
 # (trace ids, UUIDs) usually don't.

@@ -84,11 +84,15 @@ def _stderr_semconv(msg: str) -> None:
 
 
 def _safe_members(t: tarfile.TarFile):
+    """Members to extract on Python < 3.12 (no extraction filters): links are skipped, not
+    extracted (the GenAI archive has CLAUDE.md -> AGENTS.md; nothing logwarden reads is a link)."""
     for m in t.getmembers():
         # Windows rules are the strictest: they also catch "\\x", "C:/x" and "C:x" on any OS.
         p = PureWindowsPath(m.name)
-        if p.anchor or ".." in p.parts or m.issym() or m.islnk():
+        if p.anchor or ".." in p.parts:
             raise WeaverError(f"unsafe path in archive: {m.name}")
+        if m.issym() or m.islnk():
+            continue
         yield m
 
 

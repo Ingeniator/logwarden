@@ -71,4 +71,7 @@ def text(result: dict, max_findings: int = 20) -> str:
     if result.get("baseline_fixed"):
         out.append(f"baseline: {result['baseline_fixed']} entries no longer occur; "
                    "run 'logwarden baseline' to shrink it")
+    if result.get("baseline_outdated"):
+        out.append(f"baseline: {result['baseline_outdated']} adr_sensitive_data entries are from before "
+                   "v0.10.2 and no longer hide anything; check those findings, then run 'logwarden baseline'")
     return "\n".join(out)

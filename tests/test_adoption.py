@@ -137,9 +137,9 @@ def test_claim2_json_keys_only_added():
            "findings_truncated", "advice", "baseline", "baselined", "baseline_fixed", "disabled",
            "services", "input"}
     assert old <= set(res)
-    # v0.9.0 added four keys, v0.10.0 one
+    # v0.9.0 added four keys, v0.10.0 one, v0.10.2 one
     assert set(res) - old == {"profile", "outside_profile", "lines_with_violations", "fix_first",
-                              "outside_profile_unknown_fields"}
+                              "outside_profile_unknown_fields", "baseline_outdated"}
 
 
 # ---------------------------------------------------------------- claim 6: stability

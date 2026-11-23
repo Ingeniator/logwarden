@@ -18,6 +18,7 @@
   "baseline": null,
   "baselined": 0,
   "baseline_fixed": 0,
+  "baseline_outdated": 0,
   "disabled": [],
   "services": [
     {
