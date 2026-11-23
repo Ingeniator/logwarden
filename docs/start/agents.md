@@ -38,7 +38,7 @@ This adds a logwarden section to `AGENTS.md` with the rules and the commands to 
 agents that support MCP, add the server:
 
 ```json
-{"mcpServers": {"logwarden": {"command": "uvx", "args": ["--from", "logwarden[mcp]==0.10.3", "logwarden", "mcp"]}}}
+{"mcpServers": {"logwarden": {"command": "uvx", "args": ["--from", "logwarden[mcp]==0.11.0", "logwarden", "mcp"]}}}
 ```
 
 ## Next

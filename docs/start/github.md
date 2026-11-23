@@ -46,9 +46,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt logwarden==0.10.3 pytest
+      - run: pip install -r requirements.txt logwarden==0.11.0 pytest
       - run: LOGWARDEN_CAPTURE=logs.jsonl pytest
-      - uses: Ingeniator/logwarden@v0.10.3
+      - uses: Ingeniator/logwarden@v0.11.0
         with:
           logs: logs.jsonl
           comment: "true"
