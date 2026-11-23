@@ -20,7 +20,7 @@ node_otlp() {
 go_slog() {
   cd "$here/go"
   if command -v go >/dev/null; then go run . > logs.jsonl
-  else docker run --rm -v "$PWD:/src" -w /src golang:1.23 go run . > logs.jsonl; fi
+  else docker run --rm -v "$PWD:/src" -w /src golang:1.26 go run . > logs.jsonl; fi
   lw check logs.jsonl --fields logwarden-fields.yaml
 }
 java_logback() {

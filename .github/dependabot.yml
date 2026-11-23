@@ -1,5 +1,7 @@
 # Weekly update PRs for the actions in workflows and action.yml, the uv lock file (dev tools
-# and optional extras; the core package has no dependencies) and the Docker base image.
+# and optional extras; the core package has no dependencies) and the Docker base image;
+# monthly for the example recipes (examples/recipes: Go, Node, Java), which aren't shipped but
+# are copied into services. Security updates come as soon as an alert opens.
 # Weaver and the semantic conventions are pinned in code and updated by update-pins.yml.
 version: 2
 updates:
@@ -21,3 +23,24 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: gomod
+    directory: /examples/recipes/go
+    schedule:
+      interval: monthly
+    groups:
+      go-recipe:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /examples/recipes/node
+    schedule:
+      interval: monthly
+    groups:
+      node-recipe:
+        patterns: ["*"]
+  - package-ecosystem: maven
+    directory: /examples/recipes/java
+    schedule:
+      interval: monthly
+    groups:
+      java-recipe:
+        patterns: ["*"]

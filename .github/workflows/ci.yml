@@ -179,7 +179,7 @@ jobs:
           node-version: "22"
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: examples/recipes/go/go.mod
           cache-dependency-path: examples/recipes/go/go.sum
       - uses: actions/setup-java@v4
         with:
