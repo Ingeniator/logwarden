@@ -18,8 +18,8 @@ jobs:
           - os: ubuntu-latest
             python: "3.10"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Remove jq (logwarden must not need it)
         if: runner.os == 'Linux'
         run: |
@@ -31,8 +31,8 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Tests under coverage (includes CLI and MCP subprocesses)
         run: uv run --python 3.13 coverage run -m pytest -q
       - name: Report (fails under 85%, see [tool.coverage.report])
@@ -44,8 +44,8 @@ jobs:
   speed:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: 100,000 lines (v0.10.1 target 60 s; fails over 120 s to allow for runner noise)
         run: |
           uv run --python 3.13 logwarden setup > /dev/null
@@ -54,7 +54,7 @@ jobs:
   action:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: good logs pass
         id: good
         uses: ./
@@ -90,7 +90,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./
         with:
           logs: tests/data/review.jsonl   # has one known finding on main, so a PR can show "fixed"
@@ -105,8 +105,8 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv run --extra structlog python tests/data/sarif_demo/orders.py > sarif-demo.jsonl
       - uses: ./
         id: lw
@@ -136,7 +136,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./
         with:
           logs: examples/good.jsonl
@@ -147,8 +147,8 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv build
       - run: uvx twine check --strict dist/*
       - name: Wheel installs and registers the pytest plugin in a clean venv
@@ -172,16 +172,16 @@ jobs:
   recipes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: examples/recipes/go/go.mod
           cache-dependency-path: examples/recipes/go/go.sum
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -194,17 +194,17 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       - name: Build linux/amd64 and linux/arm64 (each build runs a check inside the image)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
       - name: Build linux/amd64 for the tests below
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -234,7 +234,7 @@ jobs:
   plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugin
