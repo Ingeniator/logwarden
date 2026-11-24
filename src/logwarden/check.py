@@ -840,7 +840,7 @@ def live_check(binary: str, registry: Path, samples: list[dict], work: Path, tmp
         plan.append((add("l" + _shape(log), sample), attrs))
 
     jobs = _jobs(len(unique))
-    size = -(-len(unique) // jobs)
+    size = max(1, -(-len(unique) // jobs))   # no samples (an empty file): one empty run
     chunks = [unique[i:i + size] for i in range(0, len(unique), size)] or [[]]
     dirs = [work] if len(chunks) == 1 else [tmp / f"chunk-{i}" for i in range(len(chunks))]
     for d, chunk in zip(dirs, chunks):

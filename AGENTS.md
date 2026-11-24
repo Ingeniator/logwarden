@@ -33,6 +33,7 @@ applying the project's `disable` list and baseline (`check.Policy`).
 | `src/logwarden/_data/rules.json` | Rule id → section, title, hint, doc anchor |
 | `src/logwarden/_data/registry/` | Weaver registry: the GenAI semconv dependency (which brings semconv) + shared domain fields + old GenAI names as deprecated (`genai-deprecated.yaml`). `check.base_registry` builds logwarden → GenAI → semconv without the directories GenAI replaces, so each field has one definition (`tests/test_genai.py`) |
 | `src/logwarden/logcoverage.py` | `logwarden log-coverage`: finds Python log calls (`ast`), reads coverage.py data (`.coverage` SQLite, JSON, Cobertura XML) and captured lines; fixture project in `tests/data/logcov/` |
+| `src/logwarden/metrics.py` | `check --signal metrics` (experimental): Prometheus/OpenMetrics parser, translation to OTel names (`translate`), metric samples for Weaver, `adr_metric_cardinality` and the semconv hints, computed in Python per metric; fixtures in `tests/data/metrics/` |
 | `src/logwarden/logging.py` | `configure()` (the reference structlog setup) and the failure helpers; `[structlog]` extra |
 | `src/logwarden/patterns.py` | Sensitive-data patterns in Python (redaction, `scrub`); mirror of `adr_sensitive_data` |
 | `src/logwarden/testing.py` | `capture`, `assert_failure_logged`, `assert_logs_clean` |

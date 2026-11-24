@@ -184,3 +184,13 @@ def test_semconv_hint(base, hint):
              "gen_ai.client.inference.usage.input_tokens", "gen_ai.client.inference.usage.output_tokens"]
     reg = metrics.Registry({n: {"instrument": "histogram", "unit": "s"} for n in names}, {})
     assert metrics.semconv_hint(base, reg) == hint
+
+
+@pytest.mark.weaver
+def test_domain_metric_in_fields_file(cli, tmp_path):
+    p = tmp_path / "m.prom"
+    p.write_text('# TYPE shop_orders_total counter\nshop_orders_total{shop_order_kind="web"} 1\n'
+                 '# TYPE other_total counter\nother_total 1\n')
+    r = json.loads(cli("check", "--signal", "metrics", p, "--json",
+                       "--fields", DATA / "logwarden-fields.yaml", cwd=tmp_path).stdout)
+    assert [(f["metric"], f["rule"]) for f in r["findings"]] == [("other_total", "missing_metric")]

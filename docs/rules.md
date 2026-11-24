@@ -229,3 +229,64 @@ Not rules, but they change what fails:
   nothing until the baseline is regenerated).
 - **Disabled rules:** `disable = { rule_id = "reason" }`. A reason is required. Disabled
   rules and their reasons are listed in every result under `disabled`.
+
+# Metrics rules (experimental)
+
+These come from `logwarden check --signal metrics` (from v0.12.0; see the
+[metrics standard](metrics-standard.md)). The label rules above (`adr_banned_synonym`,
+`adr_semconv_prefix`, `adr_sensitive_data`, `missing_attribute`, `deprecated`, `type_mismatch`)
+also run on metric labels. Ids and messages may still change.
+
+## adr_metric_cardinality
+
+A label whose values are unbounded (one series per user, request or value), or a metric with
+more series than the budget (`--series-budget`, default 1,000). Unbounded labels: ids
+(`user.id`, `session.id`, `order_id`, any `*.id`/`*_id` except `service.instance.id`), emails,
+tokens, `url.full`, `url.path`, `url.query`, raw messages, timestamps, client addresses and
+user agents. Over budget, the finding names the label with the most distinct values.
+
+Fails: `shop_orders_total{user_id="..."}`. Passes: `shop_orders_total{shop_order_kind="web"}`.
+
+**Fix:** keep labels to a fixed set of values: a route template (`/orders/{id}`), a status
+code, a kind. Per-user or per-request detail belongs in logs or traces. If an id really has a
+small fixed set of values (a handful of tenants), disable the rule for the project with a
+reason.
+
+## missing_metric
+
+The metric is neither a semconv metric nor declared in the project's fields file. When semconv
+has a metric for the same thing, the message names it and its Prometheus name.
+
+Fails: `http_requests_total` (semconv: `http.server.request.duration`, whose histogram gives
+the rate, errors and duration). Passes: `http_server_request_duration_seconds`.
+
+**Fix:** use the semconv metric if there is one. Otherwise declare the domain metric in
+`logwarden-fields.yaml` as a group with `type: metric` (see
+[Checking metrics](metrics-standard.md#checking-metrics)).
+
+## unit_mismatch
+
+A semconv metric with another unit than semconv defines.
+
+Fails: `http_client_request_duration_milliseconds`. Passes: `http_client_request_duration_seconds`.
+
+**Fix:** set the instrument's unit to the semconv one (durations in `s`, sizes in `By`); the
+exporter adds the Prometheus suffix.
+
+## unexpected_instrument
+
+A semconv metric exported as another instrument than semconv defines.
+
+Fails: `http_server_request_duration_total` (a counter). Passes:
+`http_server_request_duration_seconds` (a histogram).
+
+**Fix:** use the instrument semconv defines; durations and sizes are histograms.
+
+## required_attribute_not_present
+
+A semconv metric without an attribute semconv requires on it.
+
+Fails: `http_server_request_duration_seconds{http_request_method="GET"}` (no `url_scheme`).
+Passes: the same with `url_scheme="https"`.
+
+**Fix:** add the label. Instrumentation libraries that follow semconv add it for you.

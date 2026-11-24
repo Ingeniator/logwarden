@@ -188,6 +188,15 @@ don't, per file and level, from the coverage data of the same test run, and can 
 error paths are tested (`--levels error,exception,critical --fail-under 80`). See
 [Log coverage](log-coverage.md).
 
+### Metrics (experimental)
+
+`logwarden check --signal metrics FILE` checks Prometheus or OpenMetrics text, such as a saved
+`curl -s localhost:8000/metrics`, against the [metrics standard](metrics-standard.md): semconv
+names, units and instruments, the label rules shared with logs, and label cardinality. The
+same `--fields` file declares domain metrics. See
+[Checking metrics](metrics-standard.md#checking-metrics). Experimental: rule ids, messages and
+options for metrics may still change.
+
 ### Review: compare with the base branch, PR comment, HTML report
 
 A snapshot records what a run found. A later run compared with it reports which findings

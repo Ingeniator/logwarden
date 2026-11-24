@@ -4,8 +4,8 @@ Full release notes, each with a verification table, are in [docs/releases/](docs
 
 | Version | Status | Summary |
 |---|---|---|
-| [v0.13.0](docs/releases/v0.13.0.md) | Planned, conditional | Metrics in the everyday workflow: OTLP and capture, naming, resource and required-metric rules, baseline, merge requests, Action, MCP. Only if v0.12.0 says go |
-| [v0.12.0](docs/releases/v0.12.0.md) | Planned | Experiment: `check --signal metrics` on Prometheus text with cardinality and label rules, tried on five real services for a go/no-go decision |
+| [v0.13.0](docs/releases/v0.13.0.md) | Planned | Metrics in the everyday workflow: OTLP and capture, naming, resource and required-metric rules, baseline, merge requests, Action, MCP (v0.12.0 said go) |
+| [v0.12.0](docs/releases/v0.12.0.md) | Planned | `check --signal metrics` (experimental) on Prometheus text: semconv names with hints, label rules, `adr_metric_cardinality`. Trial on five services: go for v0.13.0. Fix: an empty log file no longer crashes `check` |
 | [v0.11.0](docs/releases/v0.11.0.md) | Released 2026-11-23 | `logwarden log-coverage`: which log calls the tests run (from coverage data) or that wrote a line (from captured logs), per file and level, with an opt-in CI gate |
 | [v0.10.3](docs/releases/v0.10.3.md) | Released 2026-11-23 | The semantic conventions + GenAI registry is prepared once in the cache instead of copied on every check (about 0.1 s per check) |
 | [v0.10.2](docs/releases/v0.10.2.md) | Released 2026-11-23 | Bug fixes: list fields pass as `string[]` etc.; `gen_ai.*` fields pass (GenAI semantic conventions bundled); source lines with logging set up in `conftest.py`; `init --from` naming hint follows the standard; timestamp ids no longer reported as card numbers; a baselined secret kind no longer hides another kind in the field (old secret entries must be regenerated); Python 3.10/3.11 unpack the GenAI archive |
