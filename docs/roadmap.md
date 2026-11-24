@@ -126,8 +126,10 @@ verified claim by claim before the tag (see "Releasing" in `AGENTS.md`).
   (unbounded labels, series budget), one finding per metric and label.
 - Trial on the `/metrics` output of five real services, compared with `promtool` and Weaver
   alone, with a written decision rule (see the [v0.12.0 notes](releases/v0.12.0.md)).
+- **Decision (2026-11-24): go.** In 4 of 5 services logwarden found problems worth fixing that
+  neither `promtool` nor Weaver alone reports usefully; 1 of 109 findings was not worth fixing.
 
-### M11 (v0.13.0, only if M10 says go): metrics in the everyday workflow
+### M11 (v0.13.0): metrics in the everyday workflow
 - Outcome: metrics checked with one option in the same CI, merge request and reports as logs.
 - [Metrics standard](metrics-standard.md) rules for names, resources and required metrics;
   OTLP input and `capture /v1/metrics`; domain metrics; baseline, compare, SARIF, Code Quality,

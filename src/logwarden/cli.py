@@ -118,7 +118,33 @@ def resolve(cwd: Path, *, fields: str | None = None, registry: str | None = None
 
 
 def cmd_check(a: argparse.Namespace) -> int:
+    if a.signal == "metrics":
+        return _check_metrics(_read_input(a.input), a)
     return _check_text(_read_input(a.input), a)
+
+
+_LOG_ONLY = ("baseline", "compare", "snapshot", "html", "sarif", "codequality", "metrics", "o")
+
+
+def _check_metrics(text: str, a: argparse.Namespace) -> int:
+    """check --signal metrics (experimental): Prometheus / OpenMetrics text."""
+    from logwarden import metrics
+    used = [f"--{n.replace('_', '-')}" if n != "o" else "-o" for n in _LOG_ONLY if getattr(a, n, None)]
+    if used:
+        raise UsageError(f"check --signal metrics: {', '.join(used)} not available for metrics yet "
+                         "(planned for v0.13.0)")
+    cwd = Path.cwd()
+    cfg = _load_config(cwd)
+    fields = resolve_fields(a.fields, a.registry, cwd)
+    try:
+        result = metrics.run(text, fields=fields, registry=Path(a.registry) if a.registry else None,
+                             series_budget=a.series_budget, disabled=set(cfg.disable or {}))
+    except check.CheckError as e:
+        raise UsageError(str(e)) from e
+    if a.markdown:
+        _write(Path(a.markdown), metrics.markdown(result, a.max))
+    print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else metrics.text(result, a.max))
+    return 0 if result["ok"] else 1
 
 
 def _write(path: Path, content: str) -> None:
@@ -586,6 +612,11 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--max", type=int, default=20, help="findings shown in text output (default 20)")
     c.add_argument("--baseline", metavar="FILE", help="fail only on findings not in FILE (default: config)")
     c.add_argument("--no-baseline", action="store_true", help="ignore the configured baseline")
+    c.add_argument("--signal", choices=("logs", "metrics"), default="logs",
+                   help="what the input is: logs (default) or metrics, Prometheus / OpenMetrics text "
+                        "(experimental: rules and options for metrics may still change)")
+    c.add_argument("--series-budget", type=int, default=1000, metavar="N",
+                   help="metrics: series per metric before adr_metric_cardinality (default 1000)")
     _profile_arg(c)
     _report_args(c)
     _input_args(c)

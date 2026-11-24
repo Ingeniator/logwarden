@@ -259,6 +259,12 @@ migrating a legacy service.
 | `adr_upstream_failure_coverage` | an upstream in `upstreams` whose failure path no test exercised |
 | `adr_event_catalog` | an event missing from the event catalog, when `events` is configured |
 
+**Metrics (experimental, v0.12.0):** `logwarden check --signal metrics` checks a service's
+saved `/metrics` output (Prometheus text) against the
+[metrics standard](https://github.com/Ingeniator/logwarden/blob/main/docs/metrics-standard.md):
+semconv names, units and instruments, the same label rules as for log fields, and
+`adr_metric_cardinality` for labels with unbounded values.
+
 The standard, with the reasoning behind each rule, is in
 [docs/standard.md](https://github.com/Ingeniator/logwarden/blob/main/docs/standard.md). Each
 rule's failing and passing examples and its fix are in

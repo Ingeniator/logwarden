@@ -32,6 +32,10 @@ Rule ids:
 `deprecated`, `type_mismatch`
 <!-- rule-ids:end -->
 
+`check --signal metrics` is experimental (from v0.12.0): its rule ids (`adr_metric_cardinality`,
+`missing_metric`, `unit_mismatch`, `unexpected_instrument`, `required_attribute_not_present`),
+its `--json` keys and its options may still change.
+
 **Not part of it:** the wording of messages and hints, the layout of the text output and of the
 Markdown and HTML reports, how "Fix first" groups findings, and anything marked
 *experimental* in the docs. These improve between versions.
